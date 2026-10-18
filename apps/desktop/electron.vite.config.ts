@@ -1,0 +1,34 @@
+import { resolve } from 'path';
+import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  main: {
+    plugins: [
+      externalizeDepsPlugin({
+        exclude: ['@ghostbrain/shared-types', '@ghostbrain/core']
+      })
+    ],
+    build: {
+      rollupOptions: {
+        external: ['better-sqlite3-multiple-ciphers', 'sqlite-vec']
+      }
+    }
+  },
+  preload: {
+    plugins: [
+      externalizeDepsPlugin({
+        exclude: ['@ghostbrain/shared-types']
+      })
+    ]
+  },
+  renderer: {
+    resolve: {
+      alias: {
+        '@renderer': resolve('src/renderer/src'),
+        '@shared': resolve('../../packages/shared-types/src')
+      }
+    },
+    plugins: [react()]
+  }
+});
