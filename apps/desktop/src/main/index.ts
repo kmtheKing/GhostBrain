@@ -1,3 +1,4 @@
+import { existsSync } from 'fs';
 import { app, BrowserWindow, shell, session } from 'electron';
 import { join } from 'path';
 import { electronApp, optimizer, is } from '@electron-toolkit/utils';
@@ -79,12 +80,12 @@ function createWindow(): void {
     height: 750,
     minWidth: 800,
     minHeight: 600,
-    show: false,
+    show: true,
     autoHideMenuBar: true,
     titleBarStyle: 'hidden',
     backgroundColor: '#090d16',
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      preload: existsSync(join(__dirname, '../preload/index.mjs')) ? join(__dirname, '../preload/index.mjs') : join(__dirname, '../preload/index.js'),
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false
