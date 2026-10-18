@@ -21,27 +21,22 @@
 
 | Tier | Key Prefix | Price | Billing Model | Entitlements |
 | :--- | :--- | :--- | :--- | :--- |
-| **Solo Desktop** | `GB-SOLO-` | **$49** one-time | Perpetual license + 12 months of updates | Local RAG engine, unlimited folders, power modes, up to 3 personal machines |
-| **Cloud Relay Pro** (add-on) | `GB-PRO-` | **$6/mo** or **$59/yr** | Subscription (requires active Solo) | E2E WSS relay, web dashboard, offline clipper & deferred query queue, multi-device |
-| **Clinic / Team Bundle** | `GB-CLINIC-` | **$499** one-time + **$49/mo** *or* **$29/seat/mo** | Perpetual server license + subscription for updates/support/seats | LAN Host mode, Air-Gap, SQLCipher, RBAC, audit log, offline activation |
-
-**Perpetual-fallback rule (Solo & Clinic base):** a license works forever for every build whose `release_date ≤ updates_until`. After expiry, the app keeps working on the last eligible version; newer builds prompt for an update renewal (planned: ~$29/yr renewal — **open decision**).
-
-> [!IMPORTANT]
-> **Open pricing decision — Clinic subscription.** "$49/mo or $29/seat/mo" needs a single rule. **Recommendation:** `$49/mo includes 3 named seats; each additional seat $29/mo`. This gives a smooth price curve (3 seats = $49, 4 = $78, 10 = $252). Confirm before building the seat-sync webhook.
+| **GhostBrain Personal**<br>*(Annual Fallback License)* | `GB-PERS-` | **$49 / year** | Annual license + **Perpetual Fallback** | Full offline desktop app (Win/macOS/Linux), local hybrid RAG (Vector + FTS5), local LLM execution & private chat, 12 months of updates, **Limited Phone Access** (1 mobile device for local Wi-Fi querying; no cloud relay). If canceled, permanently keep last downloaded version for offline use (including local Wi-Fi phone access). |
+| **GhostBrain Cloud+**<br>*(Add-On Subscription)* | `GB-CLOUD-` | **$4 / mo**<br>*(or **$39 / yr**)* | Subscription (requires active Personal license) | **Encrypted Web Relay** (access home PC from anywhere, bypassing local Wi-Fi restriction), **Multi-Device Sync** (link up to 5 devices: work laptop, home PC, phone, tablet), **Always-on Web Clipper** (save URLs/notes remotely to sync when PC wakes up). Cloud features require active subscription (no fallback). If subscription lapses, remote access is disabled and user reverts to Personal tier's single-device local Wi-Fi limitation. |
+| **GhostBrain Clinic & Business**<br>*(Commercial Annual)* | `GB-CLINIC-` | **$199 / year** | Annual commercial license + **Core Fallback** | Legal commercial license for office & enterprise use. Includes all Personal features + **On-Premise LAN Host Mode** (multi-staff query via local Wi-Fi), **Role-Based Access Control (RBAC)** (restrict sensitive folders), **Immutable Compliance Audit Logs** (tamper-evident query tracking without exposing private data). Fallback applies to core app; compliance updates require active yearly license. |
 
 ### 1.1 Feature Flags (embedded in license payload)
 
-| Bit | Flag | SOLO | PRO | CLINIC |
+| Bit | Flag | PERSONAL | CLOUD+ | CLINIC |
 | :-- | :--- | :-: | :-: | :-: |
-| 0 | `core.local_rag` | ✅ | ✅ (via Solo) | ✅ |
-| 1 | `relay.wss` | — | ✅ | — |
-| 2 | `relay.deferred_queue` | — | ✅ | — |
-| 3 | `lan.host` | — | — | ✅ |
-| 4 | `lan.airgap` | — | — | ✅ |
-| 5 | `security.sqlcipher` | — | — | ✅ |
+| 0 | `core.local_rag` | ✅ | ✅ (via Personal) | ✅ |
+| 1 | `lan.single_mobile` | ✅ (1 device, same Wi-Fi) | ✅ (via Personal) | ✅ |
+| 2 | `relay.wss_remote` | — | ✅ (anywhere) | — |
+| 3 | `relay.multi_device_sync` | — | ✅ (up to 5 devices) | — |
+| 4 | `relay.deferred_clipper` | — | ✅ | — |
+| 5 | `lan.host_multiseat` | — | — | ✅ |
 | 6 | `security.rbac_audit` | — | — | ✅ |
-| 7 | `support.priority` | — | — | ✅ |
+| 7 | `security.sqlcipher_airgap`| — | — | ✅ |
 
 ---
 
@@ -94,12 +89,12 @@ Keys are **self-contained and offline-verifiable**: `GB-<TIER>-<base32(payload �
 | :-- | :-- | :--- | :--- |
 | 0 | 1 | `version` | `0x01` |
 | 1 | 1 | `kid` | Signing-key ID (enables key rotation) |
-| 2 | 1 | `tier` | 1=SOLO, 2=PRO, 3=CLINIC |
-| 3 | 1 | `max_activations` | Machines (SOLO=3) |
+| 2 | 1 | `tier` | 1=PERSONAL, 2=CLOUD, 3=CLINIC |
+| 3 | 1 | `max_activations` | PERSONAL: up to 3 desktops + 1 mobile local Wi-Fi; CLOUD+: up to 5 synced devices; CLINIC: host + office seats |
 | 4 | 8 | `license_id` | Random 64-bit |
 | 12 | 4 | `issued_at` | Unix seconds |
 | 16 | 4 | `updates_until` | Unix seconds (perpetual-fallback cutoff) |
-| 20 | 2 | `seats` | CLINIC named seats |
+| 20 | 2 | `seats` | CLINIC multi-staff seats (default unconstrained on LAN host) |
 | 22 | 2 | `feature_flags` | §1.1 bitfield |
 | 24 | 8 | `email_hash` | First 8 bytes of BLAKE3(lowercase email) — ownership proof, not PII |
 
@@ -112,8 +107,8 @@ Keys are **self-contained and offline-verifiable**: `GB-<TIER>-<base32(payload �
   "typ": "gb-activation/1",
   "license_id": "9f2c…",
   "machine": "base64url(BLAKE3(machine_id ‖ per-install salt))",
-  "tier": "PRO",
-  "flags": 7,
+  "tier": "CLOUD+",
+  "flags": 31,
   "status": "active",
   "iat": 1792300000,
   "exp": 1794892000
@@ -139,11 +134,11 @@ stateDiagram-v2
   Degraded --> Activated: heartbeat succeeds
 ```
 
-| Tier | Heartbeat Required? | When Grace Expires (Degraded) | When Revoked |
+| Tier | Heartbeat Required? | When Grace Expires / Lapses | When Revoked |
 | :--- | :--- | :--- | :--- |
-| **SOLO** | Optional (activation-count enforcement + revocation check only) | **Never degrades** — perpetual offline use is a promise | Local features disabled after next successful check |
-| **PRO** | Yes (48h) | Relay + queue disabled; local engine unaffected | Relay disabled immediately |
-| **CLINIC** | Air-gap: **No** (annual offline file). Connected: 48h | Non-blocking banner + admin email; **never** blocks read access to clinical data | Banner + update channel closed; data access preserved |
+| **PERSONAL** | Optional (activation-count enforcement + revocation check only) | **Never degrades** — perpetual offline fallback for the version active within the 12mo window, including 1-device local Wi-Fi mobile access | Local features disabled after next successful check |
+| **CLOUD+** | Yes (48h) | Remote relay, multi-device sync, and cloud web clipper disabled; **reverts automatically** to Personal tier local single-device Wi-Fi limitation | Relay disabled immediately |
+| **CLINIC & BUSINESS** | Air-gap: **No** (annual offline file). Connected: 48h | Perpetual fallback applies to core app; compliance updates require active annual license. Non-blocking banner; **never** blocks data read access | Banner + compliance updates disabled; core local data access preserved |
 
 > [!CAUTION]
 > **Patient-safety rule:** licensing failures must never lock clinicians out of their own records. Degraded Clinic mode = no updates + compliance banner, never data lockout.
@@ -171,7 +166,7 @@ CREATE TABLE customers (
 CREATE TABLE licenses (
   id              TEXT PRIMARY KEY,           -- hex(license_id)
   customer_id     TEXT NOT NULL REFERENCES customers(id),
-  tier            TEXT NOT NULL CHECK (tier IN ('SOLO','PRO','CLINIC')),
+  tier            TEXT NOT NULL CHECK (tier IN ('PERSONAL','CLOUD','CLINIC')),
   kid             INTEGER NOT NULL,
   key_text        TEXT NOT NULL UNIQUE,       -- full GB-… key (re-download)
   seats           INTEGER NOT NULL DEFAULT 1,
@@ -180,7 +175,7 @@ CREATE TABLE licenses (
   updates_until   INTEGER NOT NULL,
   status          TEXT NOT NULL DEFAULT 'active'
                   CHECK (status IN ('active','past_due','cancelled','refunded','revoked')),
-  parent_license  TEXT REFERENCES licenses(id), -- PRO add-on → SOLO base
+  parent_license  TEXT REFERENCES licenses(id), -- CLOUD add-on → PERSONAL base
   provider_order  TEXT,
   provider_sub    TEXT,
   created_at      INTEGER NOT NULL,
@@ -204,7 +199,7 @@ CREATE TABLE activations (
 CREATE TABLE subscriptions (
   provider_sub       TEXT PRIMARY KEY,
   license_id         TEXT NOT NULL REFERENCES licenses(id),
-  plan               TEXT NOT NULL,           -- 'pro_monthly','pro_yearly','clinic_base','clinic_seat'
+  plan               TEXT NOT NULL,           -- 'personal_yearly','cloud_monthly','cloud_yearly','clinic_yearly'
   quantity           INTEGER NOT NULL DEFAULT 1,
   status             TEXT NOT NULL,
   current_period_end INTEGER NOT NULL,
@@ -260,7 +255,7 @@ sequenceDiagram
   MoR->>W: POST /v1/webhooks/paddle (raw body + signature)
   W->>W: verify HMAC (constant time), timestamp tolerance
   W->>D: INSERT webhook_events (provider, event_id) — conflict → 200 no-op
-  W->>W: normalize → order.paid {variant: SOLO}
+  W->>W: normalize → order.paid {variant: PERSONAL}
   W->>W: build 32-byte payload, Ed25519 sign with LICENSE_SK_kid
   W->>D: INSERT customers / licenses
   W->>E: send key + portal magic link
@@ -268,7 +263,7 @@ sequenceDiagram
   W-->>MoR: 200 OK
 ```
 
-Refund / chargeback → `licenses.status='refunded'|'revoked'` → next heartbeat returns revoked; key ID appended to the revocation list bundled in the next app release (covers offline Solo keys).
+Refund / chargeback → `licenses.status='refunded'|'revoked'` → next heartbeat returns revoked; key ID appended to the revocation list bundled in the next app release (covers offline Personal keys).
 
 ---
 
@@ -280,7 +275,7 @@ Refund / chargeback → `licenses.status='refunded'|'revoked'` → next heartbea
 - [ ] Test vectors: valid, tampered byte, wrong `kid`, expired `updates_until`, revoked list.
 
 ### L-Ch2 — MoR Webhooks & Issuance Worker
-- [ ] Products/variants created in chosen MoR (Solo, Pro monthly/yearly, Clinic base, Clinic seat).
+- [ ] Products/variants created in chosen MoR (Personal $49/yr, Cloud+ $4/mo or $39/yr, Clinic & Business $199/yr).
 - [ ] `PaymentProviderAdapter` + signature verification + idempotency ledger.
 - [ ] Issuance, email delivery, portal magic-link login.
 - [ ] D1 migrations via `wrangler d1 migrations apply --remote`.
