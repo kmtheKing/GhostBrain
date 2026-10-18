@@ -228,7 +228,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       {/* Main Full-Screen Layout */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Section Navigation Sidebar */}
-        <aside className="w-64 md:w-72 bg-white/70 dark:bg-zinc-900/60 border-r border-slate-200 dark:border-zinc-800 p-4 space-y-1.5 shrink-0 overflow-y-auto">
+        <aside className="w-64 md:w-72 bg-white/70 dark:bg-zinc-900/60 border-r border-slate-200 dark:border-zinc-800 p-4 flex flex-col shrink-0 overflow-y-auto">
           <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500 px-3 py-2">
             Configuration Domains
           </div>
@@ -262,15 +262,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             );
           })}
 
-          <div className="pt-6 px-3">
-            <div className="p-3 rounded-xl bg-slate-100 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-800 text-[10px] space-y-1">
-              <div className="font-bold text-slate-700 dark:text-zinc-300 flex items-center space-x-1">
-                <Sparkles className="w-3 h-3 text-cyan-500" />
-                <span>GhostBrain v0.0.1</span>
+          {/* Bottom Left: Package Tier & Engine Version Card */}
+          <div className="mt-auto pt-6">
+            <div className="p-3.5 rounded-xl bg-slate-100/90 dark:bg-zinc-900/90 border border-slate-200 dark:border-zinc-800/90 text-[11px] space-y-2 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-800 dark:text-zinc-100 flex items-center space-x-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-500" />
+                  <span>GhostBrain Desktop</span>
+                </span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded font-mono font-bold bg-cyan-100 dark:bg-cyan-950 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800">
+                  v0.0.1
+                </span>
               </div>
-              <p className="text-slate-500 dark:text-zinc-400 leading-normal">
-                Personal Edition: 1-device offline Wi-Fi mobile sync enabled.
-              </p>
+
+              <div className="space-y-1 text-[10px] text-slate-500 dark:text-zinc-400 font-mono">
+                <div className="flex justify-between items-center">
+                  <span>Package Tier:</span>
+                  <strong className="text-slate-700 dark:text-zinc-200 font-semibold">Personal Edition ($49/yr)</strong>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span>Core Library:</span>
+                  <span className="text-slate-600 dark:text-zinc-400">@ghostbrain/core v0.0.1</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span>Channel:</span>
+                  <span className="text-slate-600 dark:text-zinc-400">Stable Release</span>
+                </div>
+                <div className="flex justify-between items-center pt-1 border-t border-slate-200/60 dark:border-zinc-800/60">
+                  <span>License:</span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center space-x-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    <span>Perpetual Fallback Active</span>
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </aside>
