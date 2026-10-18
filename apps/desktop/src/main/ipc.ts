@@ -10,8 +10,35 @@ import type {
   SearchHit
 } from '@ghostbrain/shared-types';
 
-export function registerIpcHandlers(mainWindow: BrowserWindow): void {
+import { FolderWatcherManager } from './indexer/watcher.js';
+
+export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: FolderWatcherManager): void {
   const db = getDatabase();
+
+  // Helper to emit live index status to renderer
+  function broadcastIndexStatus() {
+    try {
+      if (mainWindow.isDestroyed()) return;
+      const totalIndexed = db.prepare("SELECT COUNT(*) as count FROM documents WHERE status = 'indexed'").get() as any;
+      const totalPending = db.prepare("SELECT COUNT(*) as count FROM documents WHERE status IN ('pending', 'parsing', 'embedding')").get() as any;
+      const totalErrors = db.prepare("SELECT COUNT(*) as count FROM documents WHERE status = 'error'").get() as any;
+
+      mainWindow.webContents.send('index:status', {
+        indexed: totalIndexed?.count || 0,
+        pending: totalPending?.count || 0,
+        errors: totalErrors?.count || 0,
+        etaSec: 0,
+        isPaused: watcherManager.getPaused()
+      });
+    } catch {
+      // Ignore during teardown
+    }
+  }
+
+  // Subscribe watcher events to broadcast live indexing status
+  watcherManager.onEvent(() => {
+    broadcastIndexStatus();
+  });
 
   // ── Folders ────────────────────────────────────────────────────────
   ipcMain.handle('folders:list', (): WatchedFolder[] => {
@@ -50,6 +77,11 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
       );
       const info = insert.run(targetPath, targetPath.split(/[\\/]/).pop(), now);
       const rowId = Number(info.lastInsertRowid);
+
+      // Start live file watcher & initial sync
+      await watcherManager.watchFolder(rowId, targetPath);
+      broadcastIndexStatus();
+
       return {
         id: rowId,
         absPath: targetPath,
@@ -63,9 +95,11 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
     }
   });
 
-  ipcMain.handle('folders:remove', (_event, folderId: number): boolean => {
+  ipcMain.handle('folders:remove', async (_event, folderId: number): Promise<boolean> => {
     try {
+      await watcherManager.unwatchFolder(folderId);
       db.prepare('DELETE FROM watched_folders WHERE id = ?').run(folderId);
+      broadcastIndexStatus();
       return true;
     } catch (err) {
       console.error('[IPC] Failed to remove folder:', err);
@@ -90,6 +124,12 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
     } catch {
       return { indexed: 0, pending: 0, errors: 0, etaSec: 0, isPaused: false };
     }
+  });
+
+  ipcMain.handle('index:pause', (_event, pause: boolean): boolean => {
+    watcherManager.setPaused(pause);
+    broadcastIndexStatus();
+    return true;
   });
 
   // ── Search & Chat ──────────────────────────────────────────────────

@@ -1,11 +1,13 @@
 import { app, BrowserWindow, shell, session } from 'electron';
 import { join } from 'path';
 import { electronApp, optimizer, is } from '@electron-toolkit/utils';
-import { initDatabase, closeDatabase } from './db/index.js';
+import { initDatabase, closeDatabase, getDatabase } from './db/index.js';
 import { setupTray } from './tray.js';
 import { registerIpcHandlers } from './ipc.js';
+import { FolderWatcherManager } from './indexer/watcher.js';
 
 let mainWindow: BrowserWindow | null = null;
+let watcherManager: FolderWatcherManager | null = null;
 let isQuitting = false;
 
 // Enforce single instance lock
@@ -22,7 +24,7 @@ if (!gotTheLock) {
     }
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     // Set app user model id for Windows notifications
     electronApp.setAppUserModelId('com.ghostbrain.app');
 
@@ -49,11 +51,17 @@ if (!gotTheLock) {
     try {
       initDatabase();
       console.log('[Main] SQLite Database initialized successfully.');
+      watcherManager = new FolderWatcherManager(getDatabase());
     } catch (err) {
       console.error('[Main] Database initialization failed:', err);
     }
 
     createWindow();
+
+    // Start background file watchers
+    if (watcherManager) {
+      await watcherManager.startAll();
+    }
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
@@ -87,7 +95,9 @@ function createWindow(): void {
   setupTray(mainWindow);
 
   // Register IPC
-  registerIpcHandlers(mainWindow);
+  if (watcherManager) {
+    registerIpcHandlers(mainWindow, watcherManager);
+  }
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show();
@@ -123,8 +133,11 @@ function createWindow(): void {
   }
 }
 
-app.on('before-quit', () => {
+app.on('before-quit', async () => {
   isQuitting = true;
+  if (watcherManager) {
+    await watcherManager.stopAll();
+  }
   closeDatabase();
 });
 
