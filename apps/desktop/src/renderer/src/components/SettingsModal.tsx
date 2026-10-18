@@ -280,77 +280,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="max-w-4xl space-y-8">
             {/* 1. CONNECTIONS & NETWORK (PRIMARY TAB) */}
             {activeTab === 'network' && (
-              <section className="space-y-8 animate-in fade-in">
+              <section className="space-y-6 animate-in fade-in">
                 {/* Header */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-zinc-800">
-                  <div>
-                    <h2 className="text-base font-bold text-slate-900 dark:text-zinc-100 flex items-center space-x-2">
-                      <Globe className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
-                      <span>Connections &amp; Mobile Interaction</span>
-                    </h2>
-                    <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
-                      Pair phones, tablets and web clients to query your second brain with zero-knowledge encryption.
-                    </p>
-                  </div>
-
-                  {/* Mode Badge Indicator */}
-                  <div className="flex items-center space-x-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 px-3 py-1.5 rounded-xl text-xs font-mono shadow-xs">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-slate-700 dark:text-zinc-300 font-semibold">
-                      {selectedMode === 'cloud-relay' ? 'Cloud Relay: Online' : 'AirGap LAN: Active'}
-                    </span>
-                    <span className="text-slate-400 dark:text-zinc-600">|</span>
-                    <span className="text-[10px] text-slate-500 dark:text-zinc-400">192.168.1.40:8443</span>
-                  </div>
-                </div>
-
-                {/* Operating Paradigm Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Option 1: Cloud Relay */}
-                  <div
-                    onClick={() => setSelectedMode('cloud-relay')}
-                    className={`p-4 rounded-xl border transition-all cursor-pointer ${
-                      selectedMode === 'cloud-relay'
-                        ? 'border-cyan-500 bg-white dark:bg-zinc-900 ring-2 ring-cyan-500/20 shadow-md'
-                        : 'border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 hover:border-slate-300'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center space-x-2">
-                        <span className="w-2.5 h-2.5 rounded-full bg-cyan-500" />
-                        <span className="font-bold text-xs text-slate-900 dark:text-zinc-100">Cloud Relay Mode</span>
-                      </div>
-                      <span className="text-[9px] px-2 py-0.5 rounded-full bg-cyan-100 dark:bg-cyan-900/60 text-cyan-800 dark:text-cyan-300 font-semibold border border-cyan-200 dark:border-cyan-700">
-                        Cloudflare WSS
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-600 dark:text-zinc-400 leading-normal">
-                      End-to-End encrypted tunnel using X25519 + HKDF-SHA256 + AES-256-GCM. Cloud servers only see encrypted ciphertext; query from cellular data anywhere.
-                    </p>
-                  </div>
-
-                  {/* Option 2: AirGap Host */}
-                  <div
-                    onClick={() => setSelectedMode('airgap')}
-                    className={`p-4 rounded-xl border transition-all cursor-pointer ${
-                      selectedMode === 'airgap'
-                        ? 'border-emerald-500 bg-white dark:bg-zinc-900 ring-2 ring-emerald-500/20 shadow-md'
-                        : 'border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 hover:border-slate-300'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center space-x-2">
-                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                        <span className="font-bold text-xs text-slate-900 dark:text-zinc-100">TLS-1.3 AirGap Host</span>
-                      </div>
-                      <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 font-semibold border border-emerald-200 dark:border-emerald-700">
-                        Local Wi-Fi Only
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-600 dark:text-zinc-400 leading-normal">
-                      Physical isolated local area network server. Works strictly on your local router with zero public internet dependency and zero cloud egress.
-                    </p>
-                  </div>
+                <div className="pb-4 border-b border-slate-200 dark:border-zinc-800">
+                  <h2 className="text-base font-bold text-slate-900 dark:text-zinc-100 flex items-center space-x-2">
+                    <Globe className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+                    <span>Connections &amp; Mobile Interaction</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
+                    Pair phones, tablets and web clients to query your second brain with zero-knowledge encryption.
+                  </p>
                 </div>
 
                 {/* THE STAR FEATURE: MOBILE PAIRING & DYNAMIC QR CODE CARD */}
