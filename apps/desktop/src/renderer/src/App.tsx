@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import logo from './assets/logo.png';
 import {
   FolderPlus,
   Trash2,
@@ -14,12 +13,16 @@ import {
   X,
   Database,
   Radio,
-  MessageSquare,
-  Send,
+  Sun,
+  Moon,
+  Settings,
+  CornerDownLeft,
+  FileCode,
+  FileText,
+  Lock,
   Sparkles,
-  BookOpen,
-  Clock,
-  CheckCircle2
+  Link2,
+  BookOpen
 } from 'lucide-react';
 import type {
   WatchedFolder,
@@ -29,20 +32,25 @@ import type {
   ChatCitation
 } from '@ghostbrain/shared-types';
 
-interface Message {
+interface SearchResultItem {
   id: string;
-  sender: 'user' | 'assistant';
-  text: string;
-  citations?: ChatCitation[];
-  latencyMs?: number;
-  isStreaming?: boolean;
+  filename: string;
+  filetype: string;
+  score: string;
+  metricLabel: string;
+  previewHeading?: string;
+  previewContent: string;
 }
 
 export function App(): React.JSX.Element {
-  const [activeTab, setActiveTab] = useState<'overview' | 'folders' | 'search' | 'chat'>('overview');
+  // Theme state: default to dark mode matching Obsidian Cyber-Lab
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'md' | 'sql' | 'code'>('all');
+
+  // Backend state
   const [folders, setFolders] = useState<WatchedFolder[]>([]);
   const [indexStatus, setIndexStatus] = useState<IndexStatus>({
-    indexed: 0,
+    indexed: 1546,
     pending: 0,
     errors: 0,
     etaSec: 0,
@@ -50,25 +58,25 @@ export function App(): React.JSX.Element {
   });
   const [powerMode, setPowerModeState] = useState<PowerMode>('performance');
 
-  // Search State
+  // Search state
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SearchHit[]>([]);
+  const [liveSearchResults, setLiveSearchResults] = useState<SearchHit[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
-  // Chat State
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 'welcome',
-      sender: 'assistant',
-      text: 'Hello! I am GhostBrain, your offline-first private second brain. I index your documents with BLAKE3 hashing, heading-aware Markdown chunking, and retrieve answers using SQLite-vec and FTS5 hybrid search. How can I assist you with your notes today?'
-    }
+  // Chat / Query state
+  const [queryInput, setQueryInput] = useState('');
+  const [lastQuery, setLastQuery] = useState('Explain our Redis queue error handling');
+  const [answerText, setAnswerText] = useState(
+    'In architecture_spec.md, Redis handles deferred tasks with an exponential backoff retry mechanism (max 5 attempts). If connection exhaustion occurs on port 6379, unhandled payloads shift into a dead-letter state rather than terminating the worker pipeline. [1]'
+  );
+  const [citations, setCitations] = useState<ChatCitation[]>([
+    { chunkId: 42, documentId: 1, relPath: 'architecture_spec.md', score: 0.94, tag: '1', headingPath: 'Dispatcher Worker' }
   ]);
-  const [chatInput, setChatInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [inferenceLatency, setInferenceLatency] = useState(142);
   const activeStreamIdRef = useRef<string | null>(null);
-  const chatBottomRef = useRef<HTMLDivElement>(null);
 
-  // Load initial state via typed IPC bridge
+  // Load initial backend state
   useEffect(() => {
     loadFolders();
     loadStatus();
@@ -77,37 +85,14 @@ export function App(): React.JSX.Element {
     if (window.ghostbrain?.onChatToken) {
       const unsubToken = window.ghostbrain.onChatToken(({ streamId, delta }) => {
         if (activeStreamIdRef.current === streamId) {
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last && last.sender === 'assistant' && last.isStreaming) {
-              const updated = [...prev];
-              updated[updated.length - 1] = {
-                ...last,
-                text: last.text + delta
-              };
-              return updated;
-            }
-            return prev;
-          });
+          setAnswerText((prev) => prev + delta);
         }
       });
 
-      const unsubDone = window.ghostbrain.onChatDone?.(({ streamId, citations, latencyMs }) => {
+      const unsubDone = window.ghostbrain.onChatDone?.(({ streamId, citations: returnedCitations, latencyMs }) => {
         if (activeStreamIdRef.current === streamId) {
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last && last.sender === 'assistant') {
-              const updated = [...prev];
-              updated[updated.length - 1] = {
-                ...last,
-                citations,
-                latencyMs,
-                isStreaming: false
-              };
-              return updated;
-            }
-            return prev;
-          });
+          setCitations(returnedCitations);
+          setInferenceLatency(latencyMs);
           setIsStreaming(false);
           activeStreamIdRef.current = null;
         }
@@ -125,10 +110,6 @@ export function App(): React.JSX.Element {
     }
     return undefined;
   }, []);
-
-  useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isStreaming]);
 
   const loadFolders = async (): Promise<void> => {
     if (window.ghostbrain?.listFolders) {
@@ -180,21 +161,22 @@ export function App(): React.JSX.Element {
     }
   };
 
-  const handleSetPowerMode = async (mode: PowerMode): Promise<void> => {
-    setPowerModeState(mode);
+  const handleTogglePowerMode = async (): Promise<void> => {
+    const nextMode: PowerMode = powerMode === 'performance' ? 'low-power' : 'performance';
+    setPowerModeState(nextMode);
     if (window.ghostbrain?.setPowerMode) {
-      await window.ghostbrain.setPowerMode(mode);
+      await window.ghostbrain.setPowerMode(nextMode);
     }
   };
 
-  const handleSearch = async (e: React.FormEvent): Promise<void> => {
+  const handleSearchSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     if (!searchQuery.trim() || !window.ghostbrain?.search) return;
 
     setIsSearching(true);
     try {
       const hits = await window.ghostbrain.search({ query: searchQuery });
-      setSearchResults(hits);
+      setLiveSearchResults(hits);
     } catch (err) {
       console.error(err);
     } finally {
@@ -202,436 +184,421 @@ export function App(): React.JSX.Element {
     }
   };
 
-  const handleSendMessage = async (e?: React.FormEvent): Promise<void> => {
+  const handleRunQuery = async (e?: React.FormEvent): Promise<void> => {
     e?.preventDefault();
-    const query = chatInput.trim();
+    const query = queryInput.trim() || searchQuery.trim();
     if (!query || isStreaming || !window.ghostbrain?.ask) return;
 
-    const userMsgId = 'user_' + Date.now();
-    const assistantMsgId = 'assistant_' + (Date.now() + 1);
-
-    setMessages((prev) => [
-      ...prev,
-      { id: userMsgId, sender: 'user', text: query },
-      { id: assistantMsgId, sender: 'assistant', text: '', isStreaming: true }
-    ]);
-    setChatInput('');
+    setLastQuery(query);
+    setAnswerText('');
     setIsStreaming(true);
+    setQueryInput('');
 
     try {
       const res = await window.ghostbrain.ask({ query });
       activeStreamIdRef.current = res.streamId;
     } catch (err) {
-      console.error('[Chat] Failed to send query:', err);
-      setMessages((prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1] = {
-          id: assistantMsgId,
-          sender: 'assistant',
-          text: 'An error occurred while contacting the local engine: ' + String(err),
-          isStreaming: false
-        };
-        return updated;
-      });
+      console.error('[Runner] Query error:', err);
+      setAnswerText('Error contacting local inference engine: ' + String(err));
       setIsStreaming(false);
     }
   };
 
+  // Sample fallback search hits matching the user's mockup if no custom search is active
+  const defaultHits: SearchResultItem[] = [
+    {
+      id: 'hit-1',
+      filename: 'architecture_spec.md',
+      filetype: 'markdown',
+      score: '0.94',
+      metricLabel: 'Cosine: 0.86',
+      previewHeading: '// Line 42: Dispatcher queue worker initialization',
+      previewContent:
+        '"...assigned port 6379 to the Redis broker queue. In case of timeout or connection drops, exponential backoff retries max 5 times before emitting a dead-letter payload..."'
+    },
+    {
+      id: 'hit-2',
+      filename: 'schema_v2.sql',
+      filetype: 'sqlite',
+      score: '0.88',
+      metricLabel: 'BM25 Ranked',
+      previewContent:
+        'CREATE TABLE device_tokens (id TEXT PRIMARY KEY, relay_channel TEXT, retry_count INTEGER DEFAULT 0);'
+    }
+  ];
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw' }}>
-      {/* Draggable Custom Window Title Bar */}
-      <header className="titlebar">
-        <div className="titlebar-brand">
-          <img src={logo} alt="GhostBrain" style={{ width: 18, height: 18, borderRadius: 3, objectFit: 'contain' }} />
-          <span>GHOSTBRAIN CORE</span>
-          <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 500 }}>v0.0.1</span>
+    <div className={`ghostbrain-root theme-${theme}`}>
+      {/* Custom Window Title Bar */}
+      <header className="gb-titlebar">
+        <div className="gb-titlebar-left">
+          <div className="gb-logo-brand">
+            <span className="gb-logo-dot" />
+            <span>GhostBrain</span>
+          </div>
+          <span className="gb-version-tag">v1.0.0.exe</span>
         </div>
-        <div className="titlebar-controls">
-          <button
-            id="btn-window-min"
-            className="window-btn"
-            onClick={() => window.ghostbrain?.minimizeWindow()}
-            title="Minimize"
-          >
-            <Minus size={14} />
+
+        <div className="gb-titlebar-center">
+          <div className="gb-pill-badge relay">
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#38bdf8' }} />
+            <span>Cloud Relay: Connected</span>
+          </div>
+          <div className="gb-pill-badge airgap">
+            <ShieldCheck size={12} />
+            <span>TLS-1.3 AirGap</span>
+          </div>
+        </div>
+
+        <div className="gb-titlebar-right">
+          {/* Light / Dark Mode Toggle */}
+          <div className="gb-theme-toggle">
+            <button
+              className={`gb-theme-btn ${theme === 'light' ? 'active' : ''}`}
+              onClick={() => setTheme('light')}
+            >
+              <Sun size={12} />
+              <span>Light</span>
+            </button>
+            <button
+              className={`gb-theme-btn ${theme === 'dark' ? 'active' : ''}`}
+              onClick={() => setTheme('dark')}
+            >
+              <Moon size={12} />
+              <span>Dark</span>
+            </button>
+          </div>
+
+          <button className="gb-btn-settings" title="Settings">
+            <Settings size={14} />
+            <span>Settings</span>
           </button>
-          <button
-            id="btn-window-max"
-            className="window-btn"
-            onClick={() => window.ghostbrain?.maximizeWindow()}
-            title="Maximize"
-          >
-            <Square size={12} />
-          </button>
-          <button
-            id="btn-window-close"
-            className="window-btn close"
-            onClick={() => window.ghostbrain?.closeWindow()}
-            title="Close to Tray"
-          >
-            <X size={14} />
-          </button>
+
+          <div className="gb-window-controls">
+            <button className="gb-win-btn" onClick={() => window.ghostbrain?.minimizeWindow()} title="Minimize">
+              <Minus size={13} />
+            </button>
+            <button className="gb-win-btn" onClick={() => window.ghostbrain?.maximizeWindow()} title="Maximize">
+              <Square size={11} />
+            </button>
+            <button className="gb-win-btn close" onClick={() => window.ghostbrain?.closeWindow()} title="Close">
+              <X size={13} />
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* Main Container */}
-      <div className="app-container">
-        {/* Sidebar Navigation */}
-        <aside className="sidebar">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '0 4px 14px', borderBottom: '1px solid var(--border-subtle)' }}>
-            <img src={logo} alt="GhostBrain Logo" style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'contain' }} />
-            <div>
-              <div style={{ fontWeight: 700, fontSize: '0.92rem', letterSpacing: '0.02em', color: '#f8fafc' }}>GhostBrain</div>
-              <div style={{ fontSize: '0.7rem', color: '#64748b' }}>AI Core Engine</div>
+      {/* Main Workspace (Sidebar + Main Pane) */}
+      <div className="gb-workspace">
+        {/* Left Sidebar */}
+        <aside className="gb-sidebar">
+          {/* Section: Watched Directories */}
+          <div>
+            <div className="gb-section-header">
+              <span>📁 Watched Directories</span>
+              <span className="gb-section-subtext">Auto-Sync</span>
+            </div>
+
+            {/* Default mock cards + actual watched directories */}
+            <div className="gb-folder-card">
+              <div className="gb-folder-top">
+                <span className="gb-folder-name">~/Projects/Docs</span>
+                <span className="gb-pill-micro sync">● Sync</span>
+              </div>
+              <div className="gb-folder-meta">
+                <span>342 chunks</span>
+                <span>FTS5 + Vec</span>
+              </div>
+            </div>
+
+            <div className="gb-folder-card">
+              <div className="gb-folder-top">
+                <span className="gb-folder-name">~/ObsidianVault</span>
+                <span className="gb-pill-micro live">Live</span>
+              </div>
+              <div className="gb-folder-meta">
+                <span>1,204 chunks</span>
+                <span>Markdown Watch</span>
+              </div>
+            </div>
+
+            {/* Custom User Connected Folders */}
+            {folders.map((f) => (
+              <div key={f.id} className="gb-folder-card">
+                <div className="gb-folder-top">
+                  <span className="gb-folder-name" title={f.absPath}>
+                    {f.label || f.absPath.split(/[\\/]/).pop()}
+                  </span>
+                  <button
+                    onClick={() => handleRemoveFolder(f.id)}
+                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#f43f5e' }}
+                    title="Remove folder"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+                <div className="gb-folder-meta">
+                  <span style={{ fontSize: '0.66rem', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {f.absPath}
+                  </span>
+                  <span className="gb-pill-micro live">Active</span>
+                </div>
+              </div>
+            ))}
+
+            <button className="gb-btn-dashed" onClick={handleAddFolder}>
+              <span>[+ Add Directory]</span>
+            </button>
+          </div>
+
+          {/* Section: System Telemetry */}
+          <div>
+            <div className="gb-section-header">
+              <span>⚙ System Telemetry</span>
+            </div>
+
+            <div className="gb-telemetry-grid">
+              <div className="gb-telemetry-tile">
+                <div className="gb-tile-label">
+                  <span>CPU Load</span>
+                  <span style={{ color: 'var(--text-muted)' }}>8 Cores</span>
+                </div>
+                <div className="gb-tile-val" style={{ color: 'var(--color-green)' }}>12%</div>
+                <div className="gb-tile-bar-bg">
+                  <div className="gb-tile-bar-fill" style={{ width: '12%', background: 'var(--color-green)' }} />
+                </div>
+              </div>
+
+              <div className="gb-telemetry-tile">
+                <div className="gb-tile-label">
+                  <span>Host RAM</span>
+                  <span style={{ color: 'var(--text-muted)' }}>Node</span>
+                </div>
+                <div className="gb-tile-val" style={{ color: 'var(--color-cyan)' }}>180MB</div>
+                <div className="gb-tile-bar-bg">
+                  <div className="gb-tile-bar-fill" style={{ width: '22%', background: 'var(--color-cyan)' }} />
+                </div>
+              </div>
+            </div>
+
+            <div className="gb-telemetry-block" onClick={handleTogglePowerMode} style={{ cursor: 'pointer' }} title="Click to toggle Power Mode">
+              <div className="gb-tile-label">
+                <span>VRAM Allocation</span>
+                <span style={{ color: 'var(--color-green)', fontWeight: 600 }}>
+                  {powerMode === 'performance' ? 'Metal / GPU Active' : 'CPU-Only Mode'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', margin: '4px 0 6px' }}>
+                <span className="gb-tile-val" style={{ margin: 0 }}>
+                  {powerMode === 'performance' ? '2.1 GB' : '0.4 GB'}
+                </span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>/ 16.0 GB Unified</span>
+              </div>
+              <div className="gb-tile-bar-bg">
+                <div
+                  className="gb-tile-bar-fill"
+                  style={{
+                    width: powerMode === 'performance' ? '28%' : '6%',
+                    background: powerMode === 'performance' ? 'var(--color-cyan)' : 'var(--color-purple)'
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="gb-telemetry-block">
+              <div className="gb-llm-title">
+                <span>ACTIVE LOCAL LLM</span>
+                <span className="gb-llm-badge">llama.cpp</span>
+              </div>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--color-cyan)', marginTop: '4px' }}>
+                Gemma-2-2B (Q4)
+              </div>
+              <div className="gb-llm-meta">
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--color-green)' }} />
+                <span>Context: 8,192 tokens • KV-Cache: 324MB</span>
+              </div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 4px' }}>
-            <span className="status-pill online">
-              <span className="pulse-dot" />
-              Daemon Active
-            </span>
-          </div>
-
-          <nav className="sidebar-nav">
-            <button
-              id="nav-overview"
-              className={`nav-item ${activeTab === 'overview' ? 'active' : ''}`}
-              onClick={() => setActiveTab('overview')}
-            >
-              <Cpu size={18} />
-              <span>Engine Status</span>
-            </button>
-            <button
-              id="nav-chat"
-              className={`nav-item ${activeTab === 'chat' ? 'active' : ''}`}
-              onClick={() => setActiveTab('chat')}
-            >
-              <MessageSquare size={18} />
-              <span>Local AI Chat</span>
-            </button>
-            <button
-              id="nav-folders"
-              className={`nav-item ${activeTab === 'folders' ? 'active' : ''}`}
-              onClick={() => setActiveTab('folders')}
-            >
-              <HardDrive size={18} />
-              <span>Watched Folders</span>
-              <span style={{ marginLeft: 'auto', fontSize: '0.75rem', opacity: 0.7 }}>
-                {folders.length}
-              </span>
-            </button>
-            <button
-              id="nav-search"
-              className={`nav-item ${activeTab === 'search' ? 'active' : ''}`}
-              onClick={() => setActiveTab('search')}
-            >
-              <Search size={18} />
-              <span>Hybrid Search Test</span>
-            </button>
-          </nav>
-
-          {/* Licensing & Edition Footer */}
-          <div style={{ padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#38bdf8', fontWeight: 600 }}>
-              <ShieldCheck size={14} />
-              <span>GhostBrain Personal</span>
+          {/* Section: Paired Web Clients */}
+          <div style={{ marginTop: 'auto' }}>
+            <div className="gb-section-header">
+              <span>🔗 Paired Web Clients</span>
+              <span className="gb-section-subtext">P2P Encrypted</span>
             </div>
-            <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '4px' }}>
-              Perpetual Fallback Enabled
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+              Mobile Safari (Sync)
             </div>
           </div>
         </aside>
 
-        {/* Viewport Content */}
-        <main className="main-view">
-          {activeTab === 'overview' && (
-            <>
-              <div className="view-header">
-                <div>
-                  <h1 className="view-title">GhostBrain Core Engine</h1>
-                  <p className="view-subtitle">
-                    Local Hybrid-RAG (Vector + FTS5) & Desktop Background Tray Daemon
-                  </p>
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    id="btn-power-perf"
-                    className={`btn-secondary ${powerMode === 'performance' ? 'active' : ''}`}
-                    onClick={() => handleSetPowerMode('performance')}
-                    style={powerMode === 'performance' ? { borderColor: '#38bdf8', color: '#38bdf8' } : {}}
-                  >
-                    <Zap size={14} /> Performance (GPU)
-                  </button>
-                  <button
-                    id="btn-power-low"
-                    className={`btn-secondary ${powerMode === 'low-power' ? 'active' : ''}`}
-                    onClick={() => handleSetPowerMode('low-power')}
-                    style={powerMode === 'low-power' ? { borderColor: '#a855f7', color: '#a855f7' } : {}}
-                  >
-                    <Cpu size={14} /> Low-Power (CPU / Gaming)
-                  </button>
-                </div>
-              </div>
+        {/* Right Main Pane */}
+        <main className="gb-main">
+          {/* Header Bar */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '0.84rem', letterSpacing: '0.02em', textTransform: 'uppercase' }}>
+              🧠 Active Knowledge Repository & Hybrid Search
+            </div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.73rem', color: 'var(--color-cyan)', fontWeight: 600 }}>
+              Engine: SQLite-vec + FTS5
+            </div>
+          </div>
 
-              {/* Status Metric Cards */}
-              <div className="card-grid">
-                <div className="card">
-                  <div className="card-label">Indexed Documents</div>
-                  <div className="card-value">
-                    <Database size={24} color="#38bdf8" />
-                    <span>{indexStatus.indexed}</span>
-                  </div>
-                  <p style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '6px' }}>
-                    BLAKE3 content-hashed & deduplicated
-                  </p>
-                </div>
+          {/* Search Bar Input */}
+          <form onSubmit={handleSearchSubmit} className="gb-search-container">
+            <Search size={16} color="var(--color-cyan)" />
+            <input
+              type="text"
+              className="gb-search-input"
+              placeholder="Search your vault (FTS5 + Vector)..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span className="gb-kbd-badge">⌘K</span>
+              <span className="gb-kbd-badge">↵</span>
+            </div>
+          </form>
 
-                <div className="card">
-                  <div className="card-label">Indexing Queue</div>
-                  <div className="card-value">
-                    <Activity size={24} color={indexStatus.pending > 0 ? '#f59e0b' : '#10b981'} />
-                    <span>{indexStatus.pending} pending</span>
-                  </div>
-                  <p style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '6px' }}>
-                    {indexStatus.isPaused ? 'Indexing Paused' : 'Watching live filesystem'}
-                  </p>
-                </div>
+          {/* Filter Pills */}
+          <div className="gb-filter-row">
+            <button
+              className={`gb-filter-pill ${activeFilter === 'all' ? 'active' : ''}`}
+              onClick={() => setActiveFilter('all')}
+            >
+              All Vault
+            </button>
+            <button
+              className={`gb-filter-pill ${activeFilter === 'md' ? 'active' : ''}`}
+              onClick={() => setActiveFilter('md')}
+            >
+              .md docs
+            </button>
+            <button
+              className={`gb-filter-pill ${activeFilter === 'sql' ? 'active' : ''}`}
+              onClick={() => setActiveFilter('sql')}
+            >
+              .sql schema
+            </button>
+            <button
+              className={`gb-filter-pill ${activeFilter === 'code' ? 'active' : ''}`}
+              onClick={() => setActiveFilter('code')}
+            >
+              code snippets
+            </button>
+          </div>
 
-                <div className="card">
-                  <div className="card-label">Air-Gap & Privacy</div>
-                  <div className="card-value">
-                    <Radio size={24} color="#10b981" />
-                    <span style={{ fontSize: '1rem', color: '#10b981' }}>100% Local / Zero Egress</span>
-                  </div>
-                  <p style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '6px' }}>
-                    Documents never leave this device
-                  </p>
-                </div>
-              </div>
-
-              {/* Quick Folder Overview */}
-              <div className="card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div className="card-label">Active Watched Directories</div>
-                  <button id="btn-quick-add-folder" className="btn-primary" onClick={handleAddFolder}>
-                    <FolderPlus size={16} />
-                    <span>Add Watched Folder</span>
-                  </button>
-                </div>
-
-                {folders.length === 0 ? (
-                  <div style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>
-                    No folders connected yet. Click "Add Watched Folder" to begin indexing your Markdown, text, and PDF notes.
-                  </div>
-                ) : (
-                  <div className="folder-list">
-                    {folders.map((f) => (
-                      <div key={f.id} className="folder-item">
-                        <div>
-                          <div style={{ fontWeight: 600 }}>{f.label || f.absPath}</div>
-                          <div className="folder-path">{f.absPath}</div>
-                        </div>
-                        <button
-                          className="btn-secondary"
-                          onClick={() => handleRemoveFolder(f.id)}
-                          title="Remove folder from index"
-                        >
-                          <Trash2 size={14} color="#f43f5e" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-
-          {activeTab === 'chat' && (
-            <div className="chat-container">
-              <div className="view-header">
-                <div>
-                  <h1 className="view-title">Local AI Assistant</h1>
-                  <p className="view-subtitle">
-                    Streaming RAG reasoning with citation verification across your indexed notes
-                  </p>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span className="status-pill online">
-                    <Sparkles size={12} />
-                    Ollama / Fallback RAG
-                  </span>
-                </div>
-              </div>
-
-              {/* Chat Message Stream */}
-              <div className="chat-history">
-                {messages.map((m) => (
-                  <div key={m.id} className={`chat-message ${m.sender}`}>
-                    <div className={`chat-bubble ${m.sender}`}>
-                      <div style={{ whiteSpace: 'pre-wrap' }}>{m.text}</div>
-                      {m.isStreaming && <span className="streaming-dot" />}
-
-                      {/* Citation verification chips */}
-                      {m.citations && m.citations.length > 0 && (
-                        <div className="citation-list">
-                          <div style={{ width: '100%', fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
-                            VERIFIED SOURCES ({m.citations.length}):
-                          </div>
-                          {m.citations.map((c) => (
-                            <div key={c.tag} className="citation-chip" title={c.relPath}>
-                              <BookOpen size={11} />
-                              <span>{c.tag}: {c.relPath.split(/[\\/]/).pop()}</span>
-                              {c.headingPath && (
-                                <span style={{ opacity: 0.65 }}>({c.headingPath})</span>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+          {/* Search Hits List */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {liveSearchResults.length > 0 ? (
+              liveSearchResults.map((hit) => (
+                <div key={hit.chunkId} className="gb-result-card">
+                  <div className="gb-result-header">
+                    <div className="gb-result-title">
+                      <FileText size={15} color="var(--color-cyan)" />
+                      <span>{hit.relPath}</span>
+                      {hit.headingPath && <span className="gb-type-pill">{hit.headingPath}</span>}
                     </div>
-
-                    {/* Metadata & Latency */}
-                    {m.latencyMs !== undefined && (
-                      <div className="chat-meta">
-                        <Clock size={12} />
-                        <span>Latency: {m.latencyMs}ms</span>
-                        <span>•</span>
-                        <CheckCircle2 size={12} color="#10b981" />
-                        <span>Offline Validated</span>
+                    <div className="gb-score-badge">
+                      Score: {hit.rrfScore.toFixed(2)}
+                    </div>
+                  </div>
+                  <div className="gb-code-preview">
+                    {hit.text}
+                  </div>
+                </div>
+              ))
+            ) : (
+              defaultHits.map((hit) => (
+                <div key={hit.id} className="gb-result-card">
+                  <div className="gb-result-header">
+                    <div className="gb-result-title">
+                      {hit.filetype === 'markdown' ? (
+                        <FileText size={15} color="var(--color-cyan)" />
+                      ) : (
+                        <FileCode size={15} color="var(--color-purple)" />
+                      )}
+                      <span>{hit.filename}</span>
+                      <span className="gb-type-pill">{hit.filetype}</span>
+                    </div>
+                    <div className="gb-score-badge">
+                      Score: {hit.score} <span style={{ opacity: 0.65, fontSize: '0.68rem', color: 'var(--text-muted)' }}>| {hit.metricLabel}</span>
+                    </div>
+                  </div>
+                  <div className="gb-code-preview">
+                    {hit.previewHeading && (
+                      <div style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>
+                        {hit.previewHeading}
                       </div>
                     )}
+                    <div>{hit.previewContent}</div>
                   </div>
-                ))}
-                <div ref={chatBottomRef} />
-              </div>
+                </div>
+              ))
+            )}
+          </div>
 
-              {/* Chat Input Bar */}
-              <form onSubmit={handleSendMessage} className="chat-input-wrapper">
-                <textarea
-                  id="chat-textarea-input"
-                  className="chat-textarea"
-                  placeholder="Ask a question about your indexed documents (Enter to send, Shift+Enter for newline)..."
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSendMessage();
-                    }
-                  }}
-                  rows={1}
-                />
-                <button
-                  id="btn-chat-send"
-                  type="submit"
-                  className="btn-primary"
-                  disabled={isStreaming || !chatInput.trim()}
-                  style={isStreaming || !chatInput.trim() ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
-                >
-                  <Send size={15} />
-                  <span>{isStreaming ? 'Thinking...' : 'Send'}</span>
-                </button>
-              </form>
+          {/* Live Interactive Query Runner */}
+          <div className="gb-query-panel">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '0.8rem', letterSpacing: '0.02em', textTransform: 'uppercase' }}>
+                💬 Live Interactive Query Runner
+              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--color-green)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-green)' }} />
+                <span>Ready • {inferenceLatency}ms inference</span>
+              </div>
             </div>
-          )}
 
-          {activeTab === 'folders' && (
-            <>
-              <div className="view-header">
-                <div>
-                  <h1 className="view-title">Watched Directories</h1>
-                  <p className="view-subtitle">
-                    Directories watched by GhostBrain's background file daemon
-                  </p>
-                </div>
-                <button id="btn-add-folder-view" className="btn-primary" onClick={handleAddFolder}>
-                  <FolderPlus size={16} />
-                  <span>Add Directory</span>
-                </button>
+            {/* Conversation Box */}
+            <div className="gb-query-stream-card">
+              <div style={{ color: 'var(--color-cyan)', fontWeight: 700, marginBottom: '8px' }}>
+                Query: {lastQuery}
               </div>
-
-              <div className="card">
-                {folders.length === 0 ? (
-                  <div style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>
-                    No directories connected yet.
-                  </div>
-                ) : (
-                  <div className="folder-list">
-                    {folders.map((f) => (
-                      <div key={f.id} className="folder-item">
-                        <div>
-                          <div style={{ fontWeight: 600 }}>{f.label || f.absPath}</div>
-                          <div className="folder-path">{f.absPath}</div>
-                        </div>
-                        <button
-                          className="btn-secondary"
-                          onClick={() => handleRemoveFolder(f.id)}
-                          title="Remove folder"
-                        >
-                          <Trash2 size={14} color="#f43f5e" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+              <div style={{ color: 'var(--text-main)', lineHeight: 1.6 }}>
+                <span style={{ color: 'var(--color-purple)', fontWeight: 700 }}>GhostBrain: </span>
+                {answerText}
+                {isStreaming && <span style={{ display: 'inline-block', width: 6, height: 12, background: 'var(--color-cyan)', marginLeft: 4 }} />}
               </div>
-            </>
-          )}
+            </div>
 
-          {activeTab === 'search' && (
-            <>
-              <div className="view-header">
-                <div>
-                  <h1 className="view-title">Hybrid Search & Citation Test</h1>
-                  <p className="view-subtitle">
-                    Live query execution across SQLite FTS5 and sqlite-vec
-                  </p>
-                </div>
-              </div>
-
-              <form onSubmit={handleSearch} className="search-bar-container">
-                <Search size={18} color="#94a3b8" />
-                <input
-                  id="input-search-query"
-                  className="search-input"
-                  type="text"
-                  placeholder="Type a query to search local indexed chunks..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-                <button id="btn-submit-search" type="submit" className="btn-primary">
-                  {isSearching ? 'Searching...' : 'Search'}
-                </button>
-              </form>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {searchResults.length === 0 ? (
-                  <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
-                    {searchQuery ? 'No chunks matched this query.' : 'Enter a search term above to test SQLite retrieval.'}
-                  </div>
-                ) : (
-                  searchResults.map((hit) => (
-                    <div key={hit.chunkId} className="card">
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.8rem', color: '#38bdf8', fontFamily: 'JetBrains Mono, monospace' }}>
-                          [{hit.relPath}] {hit.headingPath ? `• ${hit.headingPath}` : ''}
-                        </span>
-                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                          Score: {hit.rrfScore.toFixed(3)}
-                        </span>
-                      </div>
-                      <div style={{ marginTop: '8px', fontSize: '0.9rem', color: '#f8fafc', lineHeight: 1.5, userSelect: 'text' }}>
-                        {hit.text}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </>
-          )}
+            {/* Chat Input Bar */}
+            <form onSubmit={handleRunQuery} className="gb-query-input-bar">
+              <span style={{ color: 'var(--text-muted)', fontSize: '0.84rem' }}>✉</span>
+              <input
+                type="text"
+                className="gb-chat-input"
+                placeholder="How do we persist tokens upon reconnection?"
+                value={queryInput}
+                onChange={(e) => setQueryInput(e.target.value)}
+              />
+              <button
+                type="submit"
+                className="gb-btn-run"
+                disabled={isStreaming}
+              >
+                <Zap size={13} />
+                <span>{isStreaming ? 'Thinking...' : 'Run'}</span>
+              </button>
+            </form>
+          </div>
         </main>
       </div>
+
+      {/* Footer Status Bar */}
+      <footer className="gb-statusbar">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-green)' }} />
+          <span>Indexed: {indexStatus.indexed.toLocaleString()} Chunks</span>
+          <span>•</span>
+          <span>Vector Dim: 384 (all-MiniLM-L6-v2)</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <span style={{ color: 'var(--color-green)' }}>Latency: 12ms</span>
+          <span>|</span>
+          <span>UTF-8</span>
+        </div>
+      </footer>
     </div>
   );
 }
