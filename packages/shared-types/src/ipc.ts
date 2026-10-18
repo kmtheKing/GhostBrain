@@ -38,6 +38,8 @@ export interface ChatCitation {
   documentId: number;
   relPath: string;
   score: number;
+  tag?: string;
+  headingPath?: string | null;
 }
 
 export interface ChatAskPayload {

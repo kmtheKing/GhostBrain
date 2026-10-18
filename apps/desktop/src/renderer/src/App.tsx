@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import logo from './assets/logo.png';
 import {
   FolderPlus,
@@ -13,12 +13,33 @@ import {
   Square,
   X,
   Database,
-  Radio
+  Radio,
+  MessageSquare,
+  Send,
+  Sparkles,
+  BookOpen,
+  Clock,
+  CheckCircle2
 } from 'lucide-react';
-import type { WatchedFolder, IndexStatus, PowerMode, SearchHit } from '@ghostbrain/shared-types';
+import type {
+  WatchedFolder,
+  IndexStatus,
+  PowerMode,
+  SearchHit,
+  ChatCitation
+} from '@ghostbrain/shared-types';
+
+interface Message {
+  id: string;
+  sender: 'user' | 'assistant';
+  text: string;
+  citations?: ChatCitation[];
+  latencyMs?: number;
+  isStreaming?: boolean;
+}
 
 export function App(): React.JSX.Element {
-  const [activeTab, setActiveTab] = useState<'overview' | 'folders' | 'search'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'folders' | 'search' | 'chat'>('overview');
   const [folders, setFolders] = useState<WatchedFolder[]>([]);
   const [indexStatus, setIndexStatus] = useState<IndexStatus>({
     indexed: 0,
@@ -28,16 +49,86 @@ export function App(): React.JSX.Element {
     isPaused: false
   });
   const [powerMode, setPowerModeState] = useState<PowerMode>('performance');
+
+  // Search State
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchHit[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+
+  // Chat State
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: 'welcome',
+      sender: 'assistant',
+      text: 'Hello! I am GhostBrain, your offline-first private second brain. I index your documents with BLAKE3 hashing, heading-aware Markdown chunking, and retrieve answers using SQLite-vec and FTS5 hybrid search. How can I assist you with your notes today?'
+    }
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const [isStreaming, setIsStreaming] = useState(false);
+  const activeStreamIdRef = useRef<string | null>(null);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
 
   // Load initial state via typed IPC bridge
   useEffect(() => {
     loadFolders();
     loadStatus();
     loadPowerMode();
+
+    if (window.ghostbrain?.onChatToken) {
+      const unsubToken = window.ghostbrain.onChatToken(({ streamId, delta }) => {
+        if (activeStreamIdRef.current === streamId) {
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last && last.sender === 'assistant' && last.isStreaming) {
+              const updated = [...prev];
+              updated[updated.length - 1] = {
+                ...last,
+                text: last.text + delta
+              };
+              return updated;
+            }
+            return prev;
+          });
+        }
+      });
+
+      const unsubDone = window.ghostbrain.onChatDone?.(({ streamId, citations, latencyMs }) => {
+        if (activeStreamIdRef.current === streamId) {
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last && last.sender === 'assistant') {
+              const updated = [...prev];
+              updated[updated.length - 1] = {
+                ...last,
+                citations,
+                latencyMs,
+                isStreaming: false
+              };
+              return updated;
+            }
+            return prev;
+          });
+          setIsStreaming(false);
+          activeStreamIdRef.current = null;
+        }
+      });
+
+      const unsubStatus = window.ghostbrain.onIndexStatus?.((status) => {
+        setIndexStatus(status);
+      });
+
+      return () => {
+        unsubToken?.();
+        unsubDone?.();
+        unsubStatus?.();
+      };
+    }
+    return undefined;
   }, []);
+
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isStreaming]);
 
   const loadFolders = async (): Promise<void> => {
     if (window.ghostbrain?.listFolders) {
@@ -111,6 +202,41 @@ export function App(): React.JSX.Element {
     }
   };
 
+  const handleSendMessage = async (e?: React.FormEvent): Promise<void> => {
+    e?.preventDefault();
+    const query = chatInput.trim();
+    if (!query || isStreaming || !window.ghostbrain?.ask) return;
+
+    const userMsgId = 'user_' + Date.now();
+    const assistantMsgId = 'assistant_' + (Date.now() + 1);
+
+    setMessages((prev) => [
+      ...prev,
+      { id: userMsgId, sender: 'user', text: query },
+      { id: assistantMsgId, sender: 'assistant', text: '', isStreaming: true }
+    ]);
+    setChatInput('');
+    setIsStreaming(true);
+
+    try {
+      const res = await window.ghostbrain.ask({ query });
+      activeStreamIdRef.current = res.streamId;
+    } catch (err) {
+      console.error('[Chat] Failed to send query:', err);
+      setMessages((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
+          id: assistantMsgId,
+          sender: 'assistant',
+          text: 'An error occurred while contacting the local engine: ' + String(err),
+          isStreaming: false
+        };
+        return updated;
+      });
+      setIsStreaming(false);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw' }}>
       {/* Draggable Custom Window Title Bar */}
@@ -175,6 +301,14 @@ export function App(): React.JSX.Element {
             >
               <Cpu size={18} />
               <span>Engine Status</span>
+            </button>
+            <button
+              id="nav-chat"
+              className={`nav-item ${activeTab === 'chat' ? 'active' : ''}`}
+              onClick={() => setActiveTab('chat')}
+            >
+              <MessageSquare size={18} />
+              <span>Local AI Chat</span>
             </button>
             <button
               id="nav-folders"
@@ -313,6 +447,95 @@ export function App(): React.JSX.Element {
             </>
           )}
 
+          {activeTab === 'chat' && (
+            <div className="chat-container">
+              <div className="view-header">
+                <div>
+                  <h1 className="view-title">Local AI Assistant</h1>
+                  <p className="view-subtitle">
+                    Streaming RAG reasoning with citation verification across your indexed notes
+                  </p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span className="status-pill online">
+                    <Sparkles size={12} />
+                    Ollama / Fallback RAG
+                  </span>
+                </div>
+              </div>
+
+              {/* Chat Message Stream */}
+              <div className="chat-history">
+                {messages.map((m) => (
+                  <div key={m.id} className={`chat-message ${m.sender}`}>
+                    <div className={`chat-bubble ${m.sender}`}>
+                      <div style={{ whiteSpace: 'pre-wrap' }}>{m.text}</div>
+                      {m.isStreaming && <span className="streaming-dot" />}
+
+                      {/* Citation verification chips */}
+                      {m.citations && m.citations.length > 0 && (
+                        <div className="citation-list">
+                          <div style={{ width: '100%', fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
+                            VERIFIED SOURCES ({m.citations.length}):
+                          </div>
+                          {m.citations.map((c) => (
+                            <div key={c.tag} className="citation-chip" title={c.relPath}>
+                              <BookOpen size={11} />
+                              <span>{c.tag}: {c.relPath.split(/[\\/]/).pop()}</span>
+                              {c.headingPath && (
+                                <span style={{ opacity: 0.65 }}>({c.headingPath})</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Metadata & Latency */}
+                    {m.latencyMs !== undefined && (
+                      <div className="chat-meta">
+                        <Clock size={12} />
+                        <span>Latency: {m.latencyMs}ms</span>
+                        <span>•</span>
+                        <CheckCircle2 size={12} color="#10b981" />
+                        <span>Offline Validated</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <div ref={chatBottomRef} />
+              </div>
+
+              {/* Chat Input Bar */}
+              <form onSubmit={handleSendMessage} className="chat-input-wrapper">
+                <textarea
+                  id="chat-textarea-input"
+                  className="chat-textarea"
+                  placeholder="Ask a question about your indexed documents (Enter to send, Shift+Enter for newline)..."
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
+                  rows={1}
+                />
+                <button
+                  id="btn-chat-send"
+                  type="submit"
+                  className="btn-primary"
+                  disabled={isStreaming || !chatInput.trim()}
+                  style={isStreaming || !chatInput.trim() ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                >
+                  <Send size={15} />
+                  <span>{isStreaming ? 'Thinking...' : 'Send'}</span>
+                </button>
+              </form>
+            </div>
+          )}
+
           {activeTab === 'folders' && (
             <>
               <div className="view-header">
@@ -392,7 +615,7 @@ export function App(): React.JSX.Element {
                     <div key={hit.chunkId} className="card">
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: '0.8rem', color: '#38bdf8', fontFamily: 'JetBrains Mono, monospace' }}>
-                          [{hit.relPath}] {hit.headingPath ? `› ${hit.headingPath}` : ''}
+                          [{hit.relPath}] {hit.headingPath ? `• ${hit.headingPath}` : ''}
                         </span>
                         <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
                           Score: {hit.rrfScore.toFixed(3)}

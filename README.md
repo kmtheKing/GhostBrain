@@ -9,7 +9,10 @@ GhostBrain is a commercial, privacy-first "second brain" desktop engine that ind
 
 ## Key Architecture Pillars
 
-- **Hybrid RRF Search:** Combines semantic dense embeddings via `sqlite-vec` (cosine distance) and keyword BM25 ranking via SQLite `FTS5` with 60-rank Reciprocal Rank Fusion.
+- **Hybrid RRF Search:** Combines semantic dense embeddings via `sqlite-vec` (cosine distance) and keyword BM25 ranking via SQLite `FTS5` with 60-rank Reciprocal Rank Fusion (`RRF_K = 60`).
+- **FTS5 Query Sanitization:** Cleans query input by stripping syntax-breaking punctuation while preserving double-quoted phrases and Boolean operators (`AND`, `OR`, `NOT`).
+- **Streaming Local LLM Engine:** Native NDJSON streaming integration with local Ollama (`/api/chat`) and fallback RAG reasoning with real-time UI token streaming.
+- **Citation Resolution & Provenance:** System prompts enforce `[S1]...[Sn]` bracketed source references. The engine verifies and maps citations back to relative file paths, heading hierarchies, and chunk IDs.
 - **Content-Addressable Ingestion:** Streaming 64 KB **BLAKE3** file hashing skips unchanged files instantly (0 ms waste) and preserves chunk embeddings during file renames.
 - **Heading-Aware Chunking:** Intelligently preserves Markdown hierarchy (`H1 > H2 > H3`) with fenced code block and table protection, preventing semantic fragmentation.
 - **SQLCipher-Ready Foundation:** Built from day one on `better-sqlite3-multiple-ciphers` with Write-Ahead Logging (WAL) and memory temp stores.
@@ -27,14 +30,20 @@ GhostBrain/
 ├── apps/
 │   └── desktop/                  # Electron 35 + React 19 + TypeScript desktop daemon
 │       ├── src/main/             # Main process, Tray daemon, IPC handlers, SQLite & Watcher
+│       │   ├── db/               # SQLite schema v1, migrations & hybridSearch
+│       │   ├── indexer/          # WatcherManager (chokidar debounced at 500ms)
+│       │   └── ipc.ts            # Typed IPC handlers (search:query, chat:ask, index:status)
 │       ├── src/preload/          # Hardened typed contextBridge interface
-│       ├── src/renderer/         # React 19 UI (Stats, Watched Folders, Search, Chat)
+│       ├── src/renderer/         # React 19 UI (Stats, Watched Folders, Search, Local AI Chat)
 │       └── out/                  # Electron build artifacts
 ├── packages/
 │   ├── core/                     # Platform-agnostic RAG primitives & algorithms
 │   │   ├── src/hash.ts           # Streaming 64 KB BLAKE3 file hasher
 │   │   ├── src/chunker.ts        # Markdown heading-aware hierarchical chunker
 │   │   ├── src/parser.ts         # Document parser router (.md, .txt, .json, .yaml)
+│   │   ├── src/sanitizer.ts      # SQLite FTS5 query sanitizer
+│   │   ├── src/prompt.ts         # RAG prompt builder & citation extractor
+│   │   ├── src/llm/              # Local LLM providers (Ollama NDJSON streamer)
 │   │   └── src/rrf.ts            # Reciprocal Rank Fusion ranking algorithm
 │   └── shared-types/             # Strictly typed IPC contracts, payloads & schemas
 ├── docs/                         # Master architectural & compliance specifications
@@ -50,8 +59,8 @@ GhostBrain/
 | **Phase 1** | **Ch 1.1: Electron IPC & Tray** | Hardened window, single instance lock, system tray, SQLite schema v1, WAL pragmas | **Complete** (`692f3b2`) |
 | **Phase 1** | **Ch 1.2: Watcher & Chunker** | Chokidar watcher (500ms debounce), BLAKE3 streaming hasher, heading chunker, 11/11 tests | **Complete** (`309345b`) |
 | **Phase 1** | **Startup & Native ABI Fix** | Electron 35 upgrade for N-API compatibility with `better-sqlite3-multiple-ciphers` v13 + `sqlite-vec` | **Complete** (`782d9d2`) |
-| **Phase 1** | **Ch 1.3: Vector RRF & LLM** | `sqlite-vec` cosine similarity + FTS5 RRF hybrid retrieval & local LLM streaming inference | **Active (Next)** |
-| **Phase 1** | **Ch 1.4: Low-Power Modes** | CPU-only and low-VRAM gaming toggles (< 3s release) | Planned |
+| **Phase 1** | **Ch 1.3: Vector RRF & LLM** | `sqlite-vec` cosine similarity + FTS5 RRF hybrid retrieval & local LLM streaming inference with citations | **Complete** |
+| **Phase 1** | **Ch 1.4: Low-Power Modes** | CPU-only and low-VRAM gaming toggles (< 3s release) | **Next** |
 | **Phase 2** | **Ch 2.1–2.3: Cloud Relay** | E2E encrypted WSS tunnel, Cloudflare Workers/DO, sealed D1 clipper queue | Planned |
 | **Phase 3** | **Ch 3.1–3.2: Demo & CI/CD** | WebAssembly demo sandbox, GitHub Actions release matrix | Planned |
 
@@ -61,6 +70,7 @@ GhostBrain/
 
 - **Node.js:** `>= 22.0.0`
 - **Package Manager:** `pnpm >= 12.0.0`
+- **Local LLM (Optional for Chat):** [Ollama](https://ollama.com/) running locally (`ollama run llama3` or `qwen2.5:7b`)
 - **Platform:** Windows 10/11, macOS, or Linux
 
 ### Installation
@@ -90,6 +100,24 @@ pnpm --filter @ghostbrain/desktop start
 # Launch the desktop app with hot-reloading (Vite Dev Server)
 pnpm dev
 ```
+
+---
+
+## Testing Local AI Inference
+
+1. Start your local Ollama daemon:
+   ```bash
+   ollama serve
+   ```
+2. Pull a recommended local model (e.g. Llama 3 or Qwen 2.5):
+   ```bash
+   ollama pull llama3:latest
+   ```
+3. Launch GhostBrain:
+   ```bash
+   pnpm --filter @ghostbrain/desktop start
+   ```
+4. Navigate to **Local AI Chat** tab. Ask a question regarding your notes—tokens will stream directly to the UI accompanied by citation chips pointing to the relevant indexed documents.
 
 ---
 
