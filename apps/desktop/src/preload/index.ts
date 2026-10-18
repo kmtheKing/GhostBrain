@@ -1,5 +1,14 @@
-import { contextBridge, ipcRenderer } from 'electron';
-import type { GhostBrainApi, PowerMode, SearchQueryPayload, ChatAskPayload } from '@ghostbrain/shared-types';
+﻿import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import type {
+  GhostBrainApi,
+  PowerMode,
+  SearchQueryPayload,
+  ChatAskPayload,
+  IndexStatus,
+  ChatTokenPayload,
+  ChatDonePayload,
+  RelayStatus
+} from '@ghostbrain/shared-types';
 
 const api: GhostBrainApi = {
   // Folders
@@ -9,8 +18,8 @@ const api: GhostBrainApi = {
 
   // Indexing
   getIndexStatus: () => ipcRenderer.invoke('index:status'),
-  onIndexStatus: (callback) => {
-    const handler = (_: any, status: any) => callback(status);
+  onIndexStatus: (callback: (status: IndexStatus) => void) => {
+    const handler = (_: IpcRendererEvent, status: IndexStatus): void => callback(status);
     ipcRenderer.on('index:status', handler);
     return () => ipcRenderer.removeListener('index:status', handler);
   },
@@ -19,13 +28,13 @@ const api: GhostBrainApi = {
   // Search & Chat
   search: (payload: SearchQueryPayload) => ipcRenderer.invoke('search:query', payload),
   ask: (payload: ChatAskPayload) => ipcRenderer.invoke('chat:ask', payload),
-  onChatToken: (callback) => {
-    const handler = (_: any, payload: any) => callback(payload);
+  onChatToken: (callback: (payload: ChatTokenPayload) => void) => {
+    const handler = (_: IpcRendererEvent, payload: ChatTokenPayload): void => callback(payload);
     ipcRenderer.on('chat:token', handler);
     return () => ipcRenderer.removeListener('chat:token', handler);
   },
-  onChatDone: (callback) => {
-    const handler = (_: any, payload: any) => callback(payload);
+  onChatDone: (callback: (payload: ChatDonePayload) => void) => {
+    const handler = (_: IpcRendererEvent, payload: ChatDonePayload): void => callback(payload);
     ipcRenderer.on('chat:done', handler);
     return () => ipcRenderer.removeListener('chat:done', handler);
   },
@@ -36,8 +45,8 @@ const api: GhostBrainApi = {
 
   // Relay
   getRelayStatus: () => ipcRenderer.invoke('relay:status'),
-  onRelayStatus: (callback) => {
-    const handler = (_: any, status: any) => callback(status);
+  onRelayStatus: (callback: (status: RelayStatus) => void) => {
+    const handler = (_: IpcRendererEvent, status: RelayStatus): void => callback(status);
     ipcRenderer.on('relay:status', handler);
     return () => ipcRenderer.removeListener('relay:status', handler);
   },

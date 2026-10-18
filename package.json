@@ -6,7 +6,7 @@
   "packageManager": "pnpm@12.14.0",
   "scripts": {
     "dev": "pnpm --filter @ghostbrain/desktop dev",
-    "build:packages": "pnpm --filter @ghostbrain/core build",
+    "build:packages": "pnpm --filter @ghostbrain/shared-types build && pnpm --filter @ghostbrain/core build",
     "build": "pnpm build:packages && pnpm --filter @ghostbrain/desktop build",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run"
