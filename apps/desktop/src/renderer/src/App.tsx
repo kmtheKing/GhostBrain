@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { NetworkMode, WatchedDirectory, TelemetryState, PairedClient } from './types';
 import { TitleBar } from './components/TitleBar';
 import { LeftSidebar } from './components/LeftSidebar';
@@ -33,95 +33,113 @@ export function App() {
     }, 2800);
   };
 
-  // Watched directories matching screenshot + real IPC folders
-  const [directories, setDirectories] = useState<WatchedDirectory[]>([
-    {
-      id: 'projects-docs',
-      path: '~/Projects/Docs',
-      status: 'Sync',
-      chunks: 342,
-      engine: 'FTS5 + Vec',
-    },
-    {
-      id: 'obsidian-vault',
-      path: '~/ObsidianVault',
-      status: 'Live',
-      chunks: 1204,
-      engine: 'Markdown Watch',
-    },
-  ]);
+  // Watched directories strictly loaded from database (zero mock data)
+  const [directories, setDirectories] = useState<WatchedDirectory[]>([]);
 
-  // Load real folders from Electron IPC if available
-  useEffect(() => {
-    if (window.ghostbrain?.listFolders) {
-      window.ghostbrain.listFolders().then((realFolders) => {
-        if (realFolders && realFolders.length > 0) {
-          const mapped: WatchedDirectory[] = realFolders.map((f) => ({
-            id: `folder-${f.id}`,
-            path: f.label || f.absPath,
-            status: 'Live',
-            chunks: Math.floor(Math.random() * 300) + 100,
-            engine: 'FTS5 + Vec'
-          }));
-          setDirectories((prev) => [...prev, ...mapped]);
-        }
-      }).catch(console.error);
-    }
+  // Paired client list strictly loaded from relay (zero mock data)
+  const [pairedClients, setPairedClients] = useState<PairedClient[]>([]);
 
-    if (window.ghostbrain?.onIndexStatus) {
-      const unsub = window.ghostbrain.onIndexStatus((status) => {
-        if (status.indexed > 0) {
-          setDirectories((prev) =>
-            prev.map((d, i) =>
-              i === 0 ? { ...d, chunks: status.indexed } : d
-            )
-          );
-        }
-      });
-      return () => unsub();
-    }
-    return undefined;
-  }, []);
-
-  // Telemetry matching screenshot
+  // System telemetry state initialized with safe defaults, updated from real OS stats
   const [telemetry, setTelemetry] = useState<TelemetryState>({
-    cpuLoad: 12,
+    cpuLoad: 4,
     cpuCores: 8,
+    cpuModel: 'Intel Core / AMD Ryzen',
     hostRamMB: 180,
-    hostRamEngine: 'Node',
-    vramAllocatedGB: 2.1,
+    hostTotalRamMB: 16384,
+    hostUsedRamMB: 6144,
+    hostRamEngine: 'Node.js RSS',
+    vramAllocatedGB: 0,
     vramTotalGB: 16.0,
-    vramEngine: 'Metal Active',
-    activeModel: 'Gemma-2-2B',
-    modelQuant: 'Q4',
+    vramEngine: 'DirectML / CUDA',
+    activeModel: 'Gemma 4 (2B)',
+    modelQuant: 'Q4_K_M',
     backend: 'llama.cpp',
     contextTokens: 8192,
-    kvCacheMB: 324,
+    kvCacheMB: 512,
+    isModelOnline: false,
+    installedModels: []
   });
 
-  // Paired client
-  const [pairedClients] = useState<PairedClient[]>([
-    {
-      id: 'client-1',
-      name: 'Mobile Safari (Sync)',
-      ip: '192.168.1.42',
-      status: 'active',
-      type: 'mobile',
-    },
-  ]);
+  // Reload real folders from Electron database via IPC
+  const reloadFolders = useCallback(async () => {
+    if (window.ghostbrain?.listFolders) {
+      try {
+        const realFolders = await window.ghostbrain.listFolders();
+        if (realFolders) {
+          const mapped: WatchedDirectory[] = realFolders.map((f) => ({
+            id: `folder-${f.id}`,
+            path: f.absPath,
+            status: f.isEnabled ? 'Live' : 'Idle',
+            chunks: f.chunkCount || 0,
+            engine: 'FTS5 + Vec'
+          }));
+          setDirectories(mapped);
+        }
+      } catch (err) {
+        console.error('Failed to load folders from IPC:', err);
+      }
+    }
+  }, []);
+
+  // Poll real system telemetry and check local LLM sidecar health
+  const refreshTelemetry = useCallback(async () => {
+    if (window.ghostbrain?.getSystemTelemetry) {
+      try {
+        const sys = await window.ghostbrain.getSystemTelemetry();
+        setTelemetry((prev) => ({
+          ...prev,
+          cpuLoad: sys.cpuLoad,
+          cpuCores: sys.cpuCores,
+          cpuModel: sys.cpuModel,
+          hostRamMB: sys.processRssMB,
+          hostTotalRamMB: sys.totalRamMB,
+          hostUsedRamMB: sys.usedRamMB,
+          isModelOnline: sys.isModelOnline,
+          installedModels: sys.installedModels
+        }));
+      } catch (err) {
+        console.error('Failed to query system telemetry:', err);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    reloadFolders();
+    refreshTelemetry();
+
+    // Poll telemetry every 3 seconds for live hardware metrics
+    const interval = setInterval(refreshTelemetry, 3000);
+
+    // Listen to indexing status updates
+    let unsubIndex: (() => void) | undefined;
+    if (window.ghostbrain?.onIndexStatus) {
+      unsubIndex = window.ghostbrain.onIndexStatus(() => {
+        reloadFolders();
+      });
+    }
+
+    // Listen to window maximize / restore changes
+    let unsubMax: (() => void) | undefined;
+    if (window.ghostbrain?.onMaximizeChange) {
+      unsubMax = window.ghostbrain.onMaximizeChange((isMax) => {
+        setIsMaximized(isMax);
+      });
+    }
+
+    return () => {
+      clearInterval(interval);
+      unsubIndex?.();
+      unsubMax?.();
+    };
+  }, [reloadFolders, refreshTelemetry]);
 
   const handleAddDirectory = async (newDir: Omit<WatchedDirectory, 'id'>) => {
     if (window.ghostbrain?.addFolder) {
       try {
         const added = await window.ghostbrain.addFolder(newDir.path);
         if (added) {
-          const dir: WatchedDirectory = {
-            ...newDir,
-            id: `dir-${added.id}`,
-            path: added.absPath,
-          };
-          setDirectories((prev) => [...prev, dir]);
-          showToast(`Started watching ${dir.path} (${dir.chunks} chunks indexed)`);
+          await reloadFolders();
+          showToast(`Started watching ${added.absPath}`);
           return;
         }
       } catch (err) {
@@ -131,20 +149,20 @@ export function App() {
 
     const dir: WatchedDirectory = {
       ...newDir,
-      id: `dir-${Date.now()}`,
+      id: `dir-${Date.now()}`
     };
     setDirectories((prev) => [...prev, dir]);
-    showToast(`Started watching ${dir.path} (${dir.chunks} chunks indexed)`);
+    showToast(`Started watching ${dir.path}`);
   };
 
   const handleSaveSettings = (newMode: NetworkMode, newModel: string) => {
     setNetworkMode(newMode);
     setTelemetry((prev) => ({
       ...prev,
-      activeModel: newModel,
+      activeModel: newModel
     }));
     showToast(
-      `Updated settings: ${newMode === 'cloud-relay' ? 'Cloud Relay Mode' : 'TLS-1.3 AirGap LAN Host Mode'}`
+      `Updated settings: ${newMode === 'cloud-relay' ? 'Cloud Relay Mode' : 'AirGap LAN Host Mode'}`
     );
   };
 
@@ -155,94 +173,80 @@ export function App() {
       id="app-root"
       className={`${
         theme === 'dark' ? 'dark' : ''
-      } min-h-screen w-full bg-slate-200/80 dark:bg-zinc-950 font-mono text-xs md:text-sm antialiased select-none flex flex-col p-2 md:p-6 justify-center items-center overflow-x-hidden transition-colors duration-200`}
+      } h-screen w-screen flex flex-col overflow-hidden bg-slate-50 dark:bg-zinc-950 font-mono text-xs select-none transition-colors duration-200`}
     >
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-4 z-50 bg-slate-900/90 dark:bg-zinc-800 text-white dark:text-zinc-100 text-xs px-4 py-2 rounded-xl shadow-lg border border-slate-700 backdrop-blur-md animate-in fade-in slide-in-from-top-2 flex items-center space-x-2">
-          <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
+        <div className="fixed top-12 right-6 z-50 bg-slate-900/95 dark:bg-zinc-800 text-white dark:text-zinc-100 text-xs px-4 py-2 rounded-xl shadow-xl border border-slate-700/80 backdrop-blur-md animate-in fade-in slide-in-from-top-2 flex items-center space-x-2">
+          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* BEGIN: ApplicationWindowContainer */}
+      {/* Top TitleBar spanning full width */}
+      <TitleBar
+        theme={theme}
+        setTheme={setTheme}
+        networkMode={networkMode}
+        isMaximized={isMaximized}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onMinimize={() => {
+          if (window.ghostbrain?.minimizeWindow) {
+            window.ghostbrain.minimizeWindow();
+          } else {
+            showToast('GhostBrain workstation minimized to tray');
+          }
+        }}
+        onMaximize={() => {
+          if (window.ghostbrain?.maximizeWindow) {
+            window.ghostbrain.maximizeWindow();
+          }
+          setIsMaximized((prev) => !prev);
+        }}
+        onClose={() => {
+          if (window.ghostbrain?.closeWindow) {
+            window.ghostbrain.closeWindow();
+          } else {
+            showToast('GhostBrain sidecar running in background');
+          }
+        }}
+      />
+
+      {/* Main Desktop Workstation Body (Edge-to-Edge) */}
       <div
-        id="window-container"
-        className={`w-full ${
-          isMaximized ? 'h-[98vh] max-w-full' : 'max-w-6xl h-[92vh] max-h-[920px]'
-        } bg-slate-50 dark:bg-zinc-950 border border-slate-300/80 dark:border-zinc-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden nordic-shadow ring-1 ring-black/[0.04] dark:ring-white/10 transition-all duration-200`}
-        data-purpose="desktop-window-frame"
+        className="flex-1 flex flex-col md:flex-row overflow-hidden divide-y md:divide-y-0 md:divide-x divide-slate-200 dark:divide-zinc-800 transition-colors duration-200"
+        data-purpose="desktop-body"
       >
-        {/* TitleBar */}
-        <TitleBar
-          theme={theme}
-          setTheme={setTheme}
-          networkMode={networkMode}
-          onOpenSettings={() => setIsSettingsOpen(true)}
-          onMinimize={() => {
-            if (window.ghostbrain?.minimizeWindow) {
-              window.ghostbrain.minimizeWindow();
+        {/* Left Sidebar */}
+        <LeftSidebar
+          directories={directories}
+          telemetry={telemetry}
+          pairedClients={pairedClients}
+          onAddDirectoryClick={() => {
+            if (window.ghostbrain?.addFolder) {
+              window.ghostbrain.addFolder().then((added) => {
+                if (added) {
+                  reloadFolders();
+                  showToast(`Indexed directory: ${added.absPath}`);
+                }
+              }).catch(() => setIsAddDirOpen(true));
             } else {
-              showToast('GhostBrain workstation minimized to tray');
+              setIsAddDirOpen(true);
             }
           }}
-          onMaximize={() => {
-            if (window.ghostbrain?.maximizeWindow) {
-              window.ghostbrain.maximizeWindow();
-            }
-            setIsMaximized((prev) => !prev);
-          }}
-          onClose={() => {
-            if (window.ghostbrain?.closeWindow) {
-              window.ghostbrain.closeWindow();
-            } else {
-              showToast('GhostBrain sidecar running in background');
-            }
-          }}
+          onDirectoryClick={(dir) => showToast(`Active scope: ${dir.path}`)}
         />
 
-        {/* Main Desktop Workstation Body */}
-        <div
-          className="flex-1 flex flex-col md:flex-row overflow-hidden divide-y md:divide-y-0 md:divide-x divide-slate-200 dark:divide-zinc-800 transition-colors duration-200"
-          data-purpose="desktop-body"
-        >
-          {/* Left Sidebar */}
-          <LeftSidebar
-            directories={directories}
-            telemetry={telemetry}
-            pairedClients={pairedClients}
-            onAddDirectoryClick={() => {
-              if (window.ghostbrain?.addFolder) {
-                window.ghostbrain.addFolder().then((added) => {
-                  if (added) {
-                    handleAddDirectory({
-                      path: added.absPath,
-                      status: 'Sync',
-                      chunks: 142,
-                      engine: 'FTS5 + Vec',
-                    });
-                  } else {
-                    setIsAddDirOpen(true);
-                  }
-                }).catch(() => setIsAddDirOpen(true));
-              } else {
-                setIsAddDirOpen(true);
-              }
-            }}
-            onDirectoryClick={(dir) => showToast(`Selected ${dir.path} for indexing inspection`)}
-          />
-
-          {/* Main Content Area */}
-          <MainSearchArea
-            onCitationClick={(doc) => showToast(`Jumped to cited chunk source: ${doc}`)}
-          />
-        </div>
-
-        {/* Status Bar */}
-        <StatusBar totalChunks={totalChunks} vectorModel="all-MiniLM-L6-v2" latencyMs={12} />
+        {/* Main Content Area */}
+        <MainSearchArea
+          onCitationClick={(doc) => showToast(`Cited chunk: ${doc}`)}
+        />
       </div>
 
-      {/* Settings Modal (Handles network mode toggling and sidecar config) */}
+      {/* Bottom Status Bar */}
+      <StatusBar totalChunks={totalChunks} vectorModel="all-MiniLM-L6-v2" latencyMs={12} />
+
+      {/* Settings Modal (Full Screen Workstation Dialog) */}
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}

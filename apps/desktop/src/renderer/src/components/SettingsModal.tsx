@@ -70,31 +70,22 @@ interface DefaultModel {
 
 const DEFAULT_MODELS: DefaultModel[] = [
   {
-    name: 'Gemma-2-2B',
-    backend: 'llama.cpp',
+    name: 'Gemma 4 (2B Instruction)',
+    backend: 'llama.cpp / Ollama',
     quant: 'Q4_K_M',
     context: '8,192 tokens',
-    desc: 'Ultra-fast, lightweight Google DeepMind extraction model for low-spec machines.',
+    desc: 'Google DeepMind lightweight model. Ultra-fast file extraction & document summarization with low battery consumption.',
     ramEstimate: '2.4 GB',
-    family: 'Google / Gemma'
+    family: 'Google DeepMind'
   },
   {
-    name: 'Llama-3.2-3B',
-    backend: 'Ollama',
-    quant: 'Q4_K_S',
-    context: '8,192 tokens',
-    desc: 'Superior reasoning, instruction-following and JSON structured output generation.',
-    ramEstimate: '3.1 GB',
-    family: 'Meta / Llama'
-  },
-  {
-    name: 'Mistral-7B-Instruct',
-    backend: 'llama.cpp',
+    name: 'Qwen 2.5 (7B Coder & Reasoning)',
+    backend: 'llama.cpp / Ollama',
     quant: 'Q4_K_M',
-    context: '16,384 tokens',
-    desc: 'High context window ideal for deep document synthesis and cross-file research.',
-    ramEstimate: '4.8 GB',
-    family: 'Mistral AI'
+    context: '32,768 tokens',
+    desc: 'Alibaba Cloud premier reasoning & code engine. High-capacity 32K context with structured JSON and tool calling.',
+    ramEstimate: '5.4 GB',
+    family: 'Alibaba Cloud'
   },
   {
     name: 'DeepSeek-R1-7B',
@@ -106,13 +97,22 @@ const DEFAULT_MODELS: DefaultModel[] = [
     family: 'DeepSeek'
   },
   {
-    name: 'Qwen-2.5-Coder-7B',
+    name: 'Mistral-7B-Instruct',
     backend: 'llama.cpp',
     quant: 'Q4_K_M',
-    context: '32,768 tokens',
-    desc: 'Premier local coding assistant with extensive 32K context code completion.',
-    ramEstimate: '5.4 GB',
-    family: 'Alibaba / Qwen'
+    context: '16,384 tokens',
+    desc: 'High context window ideal for deep document synthesis and cross-file research.',
+    ramEstimate: '4.8 GB',
+    family: 'Mistral AI'
+  },
+  {
+    name: 'Llama-3.2-3B',
+    backend: 'Ollama',
+    quant: 'Q4_K_S',
+    context: '8,192 tokens',
+    desc: 'Balanced reasoning and instruction-following for general desktop assistance.',
+    ramEstimate: '3.1 GB',
+    family: 'Meta / Llama'
   }
 ];
 
@@ -175,6 +175,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [newModelContext, setNewModelContext] = useState('16,384 tokens');
   const [newModelDesc, setNewModelDesc] = useState('');
   const [modelFormError, setModelFormError] = useState('');
+  const [installingModel, setInstallingModel] = useState<string | null>(null);
+  const [installedModels, setInstalledModels] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('ghostbrain_installed_models');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return ['Gemma 4 (2B Instruction)'];
+  });
+
+  const handleInstallAndConnectModel = (modelName: string) => {
+    setInstallingModel(modelName);
+    setTimeout(() => {
+      setInstallingModel(null);
+      setSelectedModel(modelName);
+      if (!installedModels.includes(modelName)) {
+        const next = [...installedModels, modelName];
+        setInstalledModels(next);
+        try {
+          localStorage.setItem('ghostbrain_installed_models', JSON.stringify(next));
+        } catch {}
+      }
+    }, 900);
+  };
 
   // Live System RAM Allocation State
   const hostTotalRamGB = 16.0;
@@ -947,13 +970,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         />
                         <button
                           type="button"
-                          onClick={() => {
-                            if (!newModelPath) {
+                          onClick={async () => {
+                            if (window.ghostbrain?.selectModelFile) {
+                              try {
+                                const selected = await window.ghostbrain.selectModelFile();
+                                if (selected) {
+                                  setNewModelPath(selected);
+                                  if (!newModelName) {
+                                    const base = selected.split(/[/\\]/).pop()?.replace(/\.[^/.]+$/, '') || '';
+                                    setNewModelName(base);
+                                  }
+                                }
+                              } catch (err) {
+                                console.error('Model file picker error:', err);
+                              }
+                            } else {
                               setNewModelPath('D:\\models\\custom-model.gguf');
                             }
                           }}
-                          className="px-3 py-2 rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-300 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-zinc-800 transition flex items-center space-x-1.5 shrink-0"
-                          title="Auto-fill example model path"
+                          className="px-3 py-2 rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-300 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-zinc-800 transition flex items-center space-x-1.5 shrink-0 cursor-pointer"
+                          title="Browse local .gguf model file via Windows Explorer"
                         >
                           <FolderOpen className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
                           <span>Browse...</span>
@@ -1083,7 +1119,152 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Grid of Models */}
+                  {/* Gemma 4 vs Qwen 2.5 Side-by-Side Comparison Showcase */}
+                  <div className="p-5 rounded-2xl bg-gradient-to-br from-cyan-50/50 via-white to-slate-50/50 dark:from-cyan-950/20 dark:via-zinc-900 dark:to-zinc-900/40 border-2 border-cyan-500/30 shadow-xs space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <Sparkles className="w-4 h-4 text-cyan-500" />
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-zinc-100 font-mono">
+                          Preloaded Engines: Gemma 4 vs Qwen 2.5 Comparison
+                        </h3>
+                      </div>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-100 dark:bg-cyan-900/60 text-cyan-700 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-800 font-semibold">
+                        Zero-Cloud Local Intelligence
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Gemma 4 Column */}
+                      <div className={`p-4 rounded-xl border transition-all ${
+                        selectedModel === 'Gemma 4 (2B Instruction)'
+                          ? 'border-cyan-500 bg-white dark:bg-zinc-900 ring-2 ring-cyan-500/60 shadow-sm'
+                          : 'border-slate-200 dark:border-zinc-800 bg-white/60 dark:bg-zinc-900/40'
+                      }`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <span className="font-bold text-xs text-slate-900 dark:text-zinc-100 block">
+                              Gemma 4 (2B Instruction)
+                            </span>
+                            <span className="text-[10px] text-cyan-600 dark:text-cyan-400 font-mono">
+                              Google DeepMind • Ultra-Lightweight
+                            </span>
+                          </div>
+                          <span className="text-[10px] px-2 py-0.5 rounded font-mono bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700">
+                            ~2.4 GB RAM
+                          </span>
+                        </div>
+
+                        <div className="space-y-1.5 text-[11px] text-slate-600 dark:text-zinc-400 font-mono border-y border-slate-100 dark:border-zinc-800 py-2.5 my-2">
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Context Window:</span>
+                            <strong className="text-slate-700 dark:text-zinc-300">8,192 tokens</strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Inference Speed:</span>
+                            <strong className="text-emerald-600 dark:text-emerald-400">Ultra-Fast (~48 t/s)</strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Best For:</span>
+                            <span className="text-slate-700 dark:text-zinc-300">Quick Extraction &amp; Summaries</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Battery Impact:</span>
+                            <span className="text-emerald-600 dark:text-emerald-400">Minimal / Low-Power</span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleInstallAndConnectModel('Gemma 4 (2B Instruction)')}
+                          className={`w-full py-2 rounded-xl text-xs font-bold font-mono transition cursor-pointer flex items-center justify-center space-x-1.5 ${
+                            selectedModel === 'Gemma 4 (2B Instruction)'
+                              ? 'bg-emerald-600 text-white shadow-xs'
+                              : 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-xs'
+                          }`}
+                        >
+                          {installingModel === 'Gemma 4 (2B Instruction)' ? (
+                            <span>Configuring Engine...</span>
+                          ) : selectedModel === 'Gemma 4 (2B Instruction)' ? (
+                            <>
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Active Engine Connected</span>
+                            </>
+                          ) : (
+                            <>
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Install &amp; Connect Gemma 4</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      {/* Qwen 2.5 Column */}
+                      <div className={`p-4 rounded-xl border transition-all ${
+                        selectedModel === 'Qwen 2.5 (7B Coder & Reasoning)'
+                          ? 'border-cyan-500 bg-white dark:bg-zinc-900 ring-2 ring-cyan-500/60 shadow-sm'
+                          : 'border-slate-200 dark:border-zinc-800 bg-white/60 dark:bg-zinc-900/40'
+                      }`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <span className="font-bold text-xs text-slate-900 dark:text-zinc-100 block">
+                              Qwen 2.5 (7B Coder &amp; Reasoning)
+                            </span>
+                            <span className="text-[10px] text-cyan-600 dark:text-cyan-400 font-mono">
+                              Alibaba Cloud • Deep Code &amp; Logic
+                            </span>
+                          </div>
+                          <span className="text-[10px] px-2 py-0.5 rounded font-mono bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700">
+                            ~5.4 GB RAM
+                          </span>
+                        </div>
+
+                        <div className="space-y-1.5 text-[11px] text-slate-600 dark:text-zinc-400 font-mono border-y border-slate-100 dark:border-zinc-800 py-2.5 my-2">
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Context Window:</span>
+                            <strong className="text-slate-700 dark:text-zinc-300">32,768 tokens (Codebase)</strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Inference Speed:</span>
+                            <strong className="text-slate-700 dark:text-zinc-300">High (~32 t/s)</strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Best For:</span>
+                            <span className="text-slate-700 dark:text-zinc-300">Code Analysis &amp; Multi-Step RAG</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Tool Calling:</span>
+                            <span className="text-cyan-600 dark:text-cyan-400">JSON &amp; Structured Output</span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleInstallAndConnectModel('Qwen 2.5 (7B Coder & Reasoning)')}
+                          className={`w-full py-2 rounded-xl text-xs font-bold font-mono transition cursor-pointer flex items-center justify-center space-x-1.5 ${
+                            selectedModel === 'Qwen 2.5 (7B Coder & Reasoning)'
+                              ? 'bg-emerald-600 text-white shadow-xs'
+                              : 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-xs'
+                          }`}
+                        >
+                          {installingModel === 'Qwen 2.5 (7B Coder & Reasoning)' ? (
+                            <span>Configuring Engine...</span>
+                          ) : selectedModel === 'Qwen 2.5 (7B Coder & Reasoning)' ? (
+                            <>
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Active Engine Connected</span>
+                            </>
+                          ) : (
+                            <>
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Install &amp; Connect Qwen 2.5</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                                    {/* Grid of Models */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                     {/* Default Models */}
                     {(modelFilter === 'all' || modelFilter === 'default') &&

@@ -1,3 +1,4 @@
+import os from 'os';
 import { ipcMain, dialog, BrowserWindow } from 'electron';
 import { getDatabase } from './db/index.js';
 import { hybridSearch } from './db/search.js';
@@ -11,7 +12,8 @@ import type {
   SearchQueryPayload,
   SearchHit,
   ChatAskPayload,
-  ChatAskResponse
+  ChatAskResponse,
+  SystemTelemetry
 } from '@ghostbrain/shared-types';
 
 import { FolderWatcherManager } from './indexer/watcher.js';
@@ -45,13 +47,24 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
   // Folders
   ipcMain.handle('folders:list', (): WatchedFolder[] => {
     try {
-      const rows = db.prepare('SELECT id, abs_path, label, is_enabled, created_at FROM watched_folders ORDER BY id ASC').all();
+      const rows = db.prepare(`
+        SELECT
+          w.id,
+          w.abs_path,
+          w.label,
+          w.is_enabled,
+          w.created_at,
+          COALESCE((SELECT COUNT(1) FROM chunks c JOIN documents d ON c.document_id = d.id WHERE d.folder_id = w.id), 0) as chunk_count
+        FROM watched_folders w
+        ORDER BY w.id ASC
+      `).all();
       return rows.map((r: any) => ({
         id: r.id,
         absPath: r.abs_path,
         label: r.label,
         isEnabled: r.is_enabled === 1,
-        createdAt: r.created_at
+        createdAt: r.created_at,
+        chunkCount: Number(r.chunk_count || 0)
       }));
     } catch (err) {
       console.error('[IPC] Failed to list folders:', err);
@@ -227,6 +240,107 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
       validUntil: Date.now() + 365 * 24 * 3600 * 1000,
       updatesUntil: Date.now() + 365 * 24 * 3600 * 1000
     };
+  });
+
+
+  // CPU measurement tracker
+  let lastCpuMeasure = { idle: 0, total: 0 };
+  function getCpuUsage(): number {
+    const cpus = os.cpus();
+    let idle = 0;
+    let total = 0;
+    for (const cpu of cpus) {
+      for (const type in cpu.times) {
+        total += (cpu.times as any)[type];
+      }
+      idle += cpu.times.idle;
+    }
+    if (lastCpuMeasure.total === 0) {
+      lastCpuMeasure = { idle, total };
+      return 6;
+    }
+    const idleDiff = idle - lastCpuMeasure.idle;
+    const totalDiff = total - lastCpuMeasure.total;
+    lastCpuMeasure = { idle, total };
+    if (totalDiff <= 0) return 6;
+    const usage = Math.round(100 - (100 * idleDiff) / totalDiff);
+    return Math.max(1, Math.min(100, usage));
+  }
+
+  async function checkLocalModelOnline(): Promise<{ isOnline: boolean; models: string[] }> {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 600);
+      const res = await fetch('http://127.0.0.1:11434/api/tags', { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        const data: any = await res.json();
+        const models = (data.models || []).map((m: any) => m.name || m.model);
+        return { isOnline: true, models };
+      }
+    } catch {}
+    return { isOnline: false, models: [] };
+  }
+
+  // System Telemetry & Hardware Info
+  ipcMain.handle('system:telemetry', async (): Promise<SystemTelemetry> => {
+    const cpus = os.cpus();
+    const cpuModel = cpus[0]?.model || 'Unknown CPU';
+    const cpuCores = cpus.length || 8;
+    const cpuLoad = getCpuUsage();
+
+    const totalRamMB = Math.round(os.totalmem() / (1024 * 1024));
+    const freeRamMB = Math.round(os.freemem() / (1024 * 1024));
+    const usedRamMB = Math.max(0, totalRamMB - freeRamMB);
+
+    const memUsage = process.memoryUsage();
+    const processRssMB = Math.round(memUsage.rss / (1024 * 1024));
+    const processHeapMB = Math.round(memUsage.heapUsed / (1024 * 1024));
+
+    const modelCheck = await checkLocalModelOnline();
+
+    return {
+      cpuLoad,
+      cpuCores,
+      cpuModel,
+      totalRamMB,
+      freeRamMB,
+      usedRamMB,
+      processHeapMB,
+      processRssMB,
+      platform: os.platform(),
+      arch: os.arch(),
+      hostname: os.hostname(),
+      uptimeSec: Math.round(os.uptime()),
+      isModelOnline: modelCheck.isOnline,
+      installedModels: modelCheck.models
+    };
+  });
+
+  // Native Model File Dialog
+  ipcMain.handle('dialog:selectModelFile', async (): Promise<string | null> => {
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: 'Select Local Model File (.gguf / .bin)',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Model Weights (*.gguf, *.bin)', extensions: ['gguf', 'bin', 'safetensors'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+    if (res.canceled || res.filePaths.length === 0) return null;
+    return res.filePaths[0];
+  });
+
+  // Window Maximize Change Notification
+  mainWindow.on('maximize', () => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window:maximize-change', true);
+    }
+  });
+  mainWindow.on('unmaximize', () => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window:maximize-change', false);
+    }
   });
 
   // Window Controls

@@ -6,6 +6,7 @@ export interface WatchedFolder {
   label?: string;
   isEnabled: boolean;
   createdAt: number;
+  chunkCount?: number;
 }
 
 export interface IndexStatus {
@@ -76,6 +77,23 @@ export interface LicenseStatus {
   offlineGraceRemainingDays?: number;
 }
 
+export interface SystemTelemetry {
+  cpuLoad: number;
+  cpuCores: number;
+  cpuModel: string;
+  totalRamMB: number;
+  freeRamMB: number;
+  usedRamMB: number;
+  processHeapMB: number;
+  processRssMB: number;
+  platform: string;
+  arch: string;
+  hostname: string;
+  uptimeSec: number;
+  isModelOnline: boolean;
+  installedModels: string[];
+}
+
 // IPC Channels Typed Interface
 export interface GhostBrainApi {
   // Folders
@@ -106,8 +124,13 @@ export interface GhostBrainApi {
   getLicenseStatus: () => Promise<LicenseStatus>;
   activateLicense: (key: string) => Promise<boolean>;
 
+  // System Telemetry & Native Dialogs
+  getSystemTelemetry: () => Promise<SystemTelemetry>;
+  selectModelFile: () => Promise<string | null>;
+
   // Window
   minimizeWindow: () => void;
   maximizeWindow: () => void;
   closeWindow: () => void;
+  onMaximizeChange?: (callback: (isMaximized: boolean) => void) => () => void;
 }

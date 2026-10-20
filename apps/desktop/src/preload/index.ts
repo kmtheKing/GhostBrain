@@ -1,4 +1,4 @@
-﻿import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import type {
   GhostBrainApi,
   PowerMode,
@@ -7,7 +7,8 @@ import type {
   IndexStatus,
   ChatTokenPayload,
   ChatDonePayload,
-  RelayStatus
+  RelayStatus,
+  SystemTelemetry
 } from '@ghostbrain/shared-types';
 
 const api: GhostBrainApi = {
@@ -55,10 +56,19 @@ const api: GhostBrainApi = {
   getLicenseStatus: () => ipcRenderer.invoke('license:status'),
   activateLicense: (key: string) => ipcRenderer.invoke('license:activate', key),
 
+  // System Telemetry & Native Dialogs
+  getSystemTelemetry: (): Promise<SystemTelemetry> => ipcRenderer.invoke('system:telemetry'),
+  selectModelFile: (): Promise<string | null> => ipcRenderer.invoke('dialog:selectModelFile'),
+
   // Window Controls
   minimizeWindow: () => ipcRenderer.send('window:minimize'),
   maximizeWindow: () => ipcRenderer.send('window:maximize'),
-  closeWindow: () => ipcRenderer.send('window:close')
+  closeWindow: () => ipcRenderer.send('window:close'),
+  onMaximizeChange: (callback: (isMaximized: boolean) => void) => {
+    const handler = (_: IpcRendererEvent, isMax: boolean): void => callback(isMax);
+    ipcRenderer.on('window:maximize-change', handler);
+    return () => ipcRenderer.removeListener('window:maximize-change', handler);
+  }
 };
 
 // Expose safe context bridge

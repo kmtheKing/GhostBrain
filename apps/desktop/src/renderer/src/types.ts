@@ -11,7 +11,10 @@ export interface WatchedDirectory {
 export interface TelemetryState {
   cpuLoad: number;
   cpuCores: number;
+  cpuModel?: string;
   hostRamMB: number;
+  hostTotalRamMB?: number;
+  hostUsedRamMB?: number;
   hostRamEngine: string;
   vramAllocatedGB: number;
   vramTotalGB: number;
@@ -21,6 +24,8 @@ export interface TelemetryState {
   backend: string;
   contextTokens: number;
   kvCacheMB: number;
+  isModelOnline?: boolean;
+  installedModels?: string[];
 }
 
 export interface PairedClient {
