@@ -63,6 +63,13 @@ const api: GhostBrainApi = {
   listPairedDevices: (): Promise<PairedDeviceRecord[]> => ipcRenderer.invoke('devices:list'),
   revokePairedDevice: (deviceId: string): Promise<boolean> => ipcRenderer.invoke('devices:revoke', deviceId),
 
+  // Tier-based LLM Setup
+  setupTier: (tier: 'low' | 'balanced' | 'high') => ipcRenderer.invoke('llm:setupTier', tier),
+  onPullProgress: (callback: (progress: any) => void) => {
+    const handler = (_: IpcRendererEvent, p: any) => callback(p);
+    ipcRenderer.on('llm:pull-progress', handler);
+    return () => ipcRenderer.removeListener('llm:pull-progress', handler);
+  },
   // System Telemetry & Native Dialogs
   getSystemTelemetry: (): Promise<SystemTelemetry> => ipcRenderer.invoke('system:telemetry'),
   selectModelFile: (): Promise<string | null> => ipcRenderer.invoke('dialog:selectModelFile'),

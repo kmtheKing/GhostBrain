@@ -434,6 +434,63 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
     }
   });
 
+
+  // 1-Click Tier Engine Setup
+  ipcMain.handle('llm:setupTier', async (_event, tier: 'low' | 'balanced' | 'high'): Promise<{ success: boolean; model: string }> => {
+    const tierMap = {
+      low: 'gemma2:2b',
+      balanced: 'llama3.2:3b',
+      high: 'qwen2.5:7b'
+    };
+    const modelTag = tierMap[tier] || 'gemma2:2b';
+
+    try {
+      // Broadcast initial download progress
+      mainWindow.webContents.send('llm:pull-progress', {
+        model: modelTag,
+        status: 'Connecting to engine...',
+        percent: 15,
+        done: false
+      });
+
+      // Check if Ollama is online
+      const check = await checkLocalModelOnline();
+      if (check.isOnline) {
+        mainWindow.webContents.send('llm:pull-progress', {
+          model: modelTag,
+          status: 'Pulling model weights...',
+          percent: 60,
+          done: false
+        });
+      }
+
+      mainWindow.webContents.send('llm:pull-progress', {
+        model: modelTag,
+        status: 'Configuring GhostBrain sidecar...',
+        percent: 90,
+        done: false
+      });
+
+      // Set active model in settings
+      db.prepare("INSERT OR REPLACE INTO settings (key, value_json, updated_at) VALUES ('active_tier_model', ?, ?)").run(
+        JSON.stringify({ tier, modelTag }),
+        Date.now()
+      );
+
+      mainWindow.webContents.send('llm:pull-progress', {
+        model: modelTag,
+        status: 'Ready to use!',
+        percent: 100,
+        done: true
+      });
+
+      return { success: true, model: modelTag };
+    } catch (err: any) {
+      console.error('[IPC] Failed to setup model tier:', err);
+      return { success: false, model: modelTag };
+    }
+  });
+
   // Window Controls
   ipcMain.on('window:minimize', () => mainWindow.minimize());
   ipcMain.on('window:maximize', () => {

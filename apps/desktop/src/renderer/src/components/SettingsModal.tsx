@@ -36,12 +36,15 @@ import {
 } from 'lucide-react';
 import type { NetworkMode } from '../types';
 
+import type { TelemetryState } from '../types';
+
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentMode: NetworkMode;
   currentModel: string;
   onSave: (mode: NetworkMode, model: string) => void;
+  telemetry?: TelemetryState;
 }
 
 type SettingsSection = 'network' | 'llm' | 'search' | 'security' | 'indexing';
@@ -134,6 +137,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   currentMode,
   currentModel,
   onSave,
+  telemetry,
 }) => {
   const [activeTab, setActiveTab] = useState<SettingsSection>('network');
   const [selectedMode, setSelectedMode] = useState<NetworkMode>(currentMode);
@@ -144,6 +148,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [lowPowerGamingMode, setLowPowerGamingMode] = useState(false);
   const [isSavedToast, setIsSavedToast] = useState(false);
 
+  // User-Centric Local LLM Performance Tier State
+  const [selectedTier, setSelectedTier] = useState<'low' | 'balanced' | 'high'>(() => {
+    return (localStorage.getItem('ghostbrain_active_tier') as any) || 'balanced';
+  });
+  const [isSettingUpTier, setIsSettingUpTier] = useState(false);
+  const [tierProgress, setTierProgress] = useState(0);
+
   // Local LLM Model Management State
   const [modelFilter, setModelFilter] = useState<'all' | 'default' | 'custom'>('all');
   const [isAddingModel, setIsAddingModel] = useState(false);
@@ -152,19 +163,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       const saved = localStorage.getItem('ghostbrain_custom_models');
       if (saved) return JSON.parse(saved);
     } catch {}
-    return [
-      {
-        id: 'custom-qwen-coder',
-        name: 'Custom Qwen-2.5-Coder-14B',
-        backend: 'llama.cpp',
-        quant: 'Q5_K_M',
-        context: '32,768 tokens',
-        desc: 'Self-hosted GGUF quantized model loaded from local disk storage.',
-        pathOrEndpoint: 'D:\\models\\qwen2.5-14b-instruct.gguf',
-        ramEstimate: '9.2 GB',
-        isCustom: true
-      }
-    ];
+    return [];
   });
 
   // Custom Model Form Inputs
@@ -181,7 +180,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       const saved = localStorage.getItem('ghostbrain_installed_models');
       if (saved) return JSON.parse(saved);
     } catch {}
-    return ['Gemma 4 (2B Instruction)'];
+    return [];
   });
 
   const handleInstallAndConnectModel = (modelName: string) => {
@@ -915,850 +914,338 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             )}
 
             {/* 2. LOCAL LLM & HARDWARE */}
-            {activeTab === 'llm' && (
-              <section className="space-y-8 animate-in fade-in pb-12">
-                {/* Header with Title and Add Custom Model Button */}
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200 dark:border-zinc-800">
-                  <div>
-                    <h2 className="text-base font-bold text-slate-900 dark:text-zinc-100 flex items-center space-x-2">
-                      <Cpu className="w-5 h-5 text-cyan-500" />
-                      <span>Local LLM Runtime &amp; Hardware Allocation</span>
-                    </h2>
-                    <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
-                      Choose embedded default models or load your own custom GGUF weights, tune host live RAM budgets, and manage hardware compute layers.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsAddingModel(!isAddingModel);
-                      setModelFormError('');
-                    }}
-                    className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 text-white font-bold text-xs shadow-sm shadow-cyan-600/20 transition cursor-pointer self-start sm:self-auto shrink-0"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>{isAddingModel ? 'Cancel Model Setup' : '+ Add Custom Model'}</span>
-                  </button>
+            {activeTab === 'llm' && (() => {
+              const freeHostRamMB = Math.max(1024, (telemetry?.hostTotalRamMB || 16384) - (telemetry?.hostUsedRamMB || 6144));
+              const freeHostRamGB = Number((freeHostRamMB / 1024).toFixed(1));
+              const maxSliderGB = Math.max(2.0, Math.min(32.0, freeHostRamGB));
+
+              const TIERS = [
+                {
+                  id: 'low',
+                  name: 'Low Performance',
+                  badge: 'Eco / Lightweight',
+                  minRam: 2.0,
+                  tag: 'gemma2:2b',
+                  desc: 'Fast document search, basic summaries, minimal battery drain. Optimized for 4GB–8GB laptops without dedicated GPU.',
+                  fit: 'Low-Spec Laptops & PCs'
+                },
+                {
+                  id: 'balanced',
+                  name: 'Balanced Performance',
+                  badge: 'Standard (Recommended)',
+                  minRam: 3.5,
+                  tag: 'llama3.2:3b',
+                  desc: 'High-accuracy reasoning, cross-document analysis, structured data insights. Recommended for general daily workflows.',
+                  fit: 'Standard 8GB–16GB Desktops'
+                },
+                {
+                  id: 'high',
+                  name: 'Full Power',
+                  badge: 'Deep Intelligence',
+                  minRam: 5.5,
+                  tag: 'qwen2.5:7b',
+                  desc: 'Complex code synthesis, deep multi-step logic, long research papers. For high-spec multi-core PCs.',
+                  fit: 'High-Spec Workstations'
+                }
+              ];
+
+              const currentTierObj = TIERS.find(t => t.id === selectedTier) || TIERS[1];
+              const isBudgetSufficient = ramBudgetGB >= currentTierObj.minRam;
+
+              return (
+              <section className="space-y-6 animate-in fade-in pb-12 select-none">
+                {/* Header */}
+                <div className="pb-4 border-b border-slate-200 dark:border-zinc-800">
+                  <h2 className="text-base font-bold text-slate-900 dark:text-zinc-100 flex items-center space-x-2">
+                    <Cpu className="w-5 h-5 text-cyan-500" />
+                    <span>Local AI Model &amp; System Memory Allocation</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
+                    Configure your local AI engine by performance level. The app automatically ensures your hardware specifications satisfy the selected tier before downloading.
+                  </p>
                 </div>
 
-                {/* Inline Add Custom Model Form Card */}
-                {isAddingModel && (
-                  <form
-                    onSubmit={handleAddCustomModel}
-                    className="p-6 rounded-2xl bg-cyan-50/40 dark:bg-cyan-950/20 border-2 border-cyan-500/50 space-y-4 animate-in slide-in-from-top-4 duration-200 shadow-sm"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <Server className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
-                        <span className="font-bold text-xs text-slate-900 dark:text-zinc-100">
-                          Register Custom Local Model (.gguf / RPC Endpoint)
-                        </span>
+                {/* Section 1: Simplified Live Memory Overview */}
+                <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 space-y-4 shadow-xs">
+                  <div className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-zinc-100 flex items-center space-x-2">
+                    <HardDrive className="w-4 h-4 text-cyan-500" />
+                    <span>Real-Time Host Memory Overview</span>
+                  </div>
+
+                  {/* 2 Clear Metric Boxes */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Box 1: App Memory in Use */}
+                    <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-800 flex items-center justify-between">
+                      <div>
+                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-bold">
+                          GhostBrain App Memory In Use
+                        </div>
+                        <div className="text-lg font-bold text-slate-800 dark:text-zinc-100 mt-0.5 font-mono">
+                          {telemetry?.hostRamMB || 180} MB
+                        </div>
+                        <div className="text-[10px] text-slate-400 dark:text-zinc-500">
+                          Live daemon footprint
+                        </div>
                       </div>
-                      <span className="text-[10px] text-cyan-700 dark:text-cyan-300 font-mono bg-cyan-100 dark:bg-cyan-900/60 px-2 py-0.5 rounded border border-cyan-300 dark:border-cyan-800">
-                        Zero-Cloud Isolation
-                      </span>
+                      <Activity className="w-5 h-5 text-cyan-500 shrink-0" />
                     </div>
 
-                    {modelFormError && (
-                      <div className="flex items-center space-x-2 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 text-xs">
-                        <AlertCircle className="w-4 h-4 shrink-0" />
-                        <span>{modelFormError}</span>
+                    {/* Box 2: Available Free Host RAM */}
+                    <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-800 flex items-center justify-between">
+                      <div>
+                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-bold">
+                          Available Free Host RAM
+                        </div>
+                        <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400 mt-0.5 font-mono">
+                          {freeHostRamGB} GB Free
+                        </div>
+                        <div className="text-[10px] text-slate-400 dark:text-zinc-500">
+                          Ready for local AI allocation
+                        </div>
                       </div>
-                    )}
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-slate-700 dark:text-zinc-300">
-                          Model Identifier / Display Name *
-                        </label>
-                        <input
-                          type="text"
-                          value={newModelName}
-                          onChange={(e) => setNewModelName(e.target.value)}
-                          placeholder="e.g. Qwen2.5-Coder-7B-Instruct or Mistral-Nemo-12B"
-                          className="w-full px-3 py-2 rounded-xl text-xs bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 text-slate-900 dark:text-zinc-100 focus:outline-hidden focus:ring-2 focus:ring-cyan-500 font-mono"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-slate-700 dark:text-zinc-300">
-                          Execution Engine / Backend
-                        </label>
-                        <select
-                          value={newModelBackend}
-                          onChange={(e) => setNewModelBackend(e.target.value)}
-                          className="w-full px-3 py-2 rounded-xl text-xs bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 text-slate-900 dark:text-zinc-100 focus:outline-hidden focus:ring-2 focus:ring-cyan-500 font-mono cursor-pointer"
-                        >
-                          <option value="llama.cpp">llama.cpp (Local GGUF Binary)</option>
-                          <option value="Ollama">Ollama Local Instance (localhost:11434)</option>
-                          <option value="llama-server">llama-server (OpenAI-compatible)</option>
-                          <option value="vLLM / RPC">vLLM / RPC Server</option>
-                          <option value="DirectML / ONNX">DirectML / ONNX Runtime</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-bold text-slate-700 dark:text-zinc-300 flex items-center justify-between">
-                        <span>GGUF File Path or RPC URL *</span>
-                        <span className="text-[10px] text-slate-400 font-normal">Absolute disk path or local host URI</span>
-                      </label>
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="text"
-                          value={newModelPath}
-                          onChange={(e) => setNewModelPath(e.target.value)}
-                          placeholder="D:\models\qwen2.5-coder-7b-instruct.Q4_K_M.gguf"
-                          className="flex-1 px-3 py-2 rounded-xl text-xs bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 text-slate-900 dark:text-zinc-100 focus:outline-hidden focus:ring-2 focus:ring-cyan-500 font-mono"
-                        />
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (window.ghostbrain?.selectModelFile) {
-                              try {
-                                const selected = await window.ghostbrain.selectModelFile();
-                                if (selected) {
-                                  setNewModelPath(selected);
-                                  if (!newModelName) {
-                                    const base = selected.split(/[/\\]/).pop()?.replace(/\.[^/.]+$/, '') || '';
-                                    setNewModelName(base);
-                                  }
-                                }
-                              } catch (err) {
-                                console.error('Model file picker error:', err);
-                              }
-                            } else {
-                              setNewModelPath('D:\\models\\custom-model.gguf');
-                            }
-                          }}
-                          className="px-3 py-2 rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-300 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-zinc-800 transition flex items-center space-x-1.5 shrink-0 cursor-pointer"
-                          title="Browse local .gguf model file via Windows Explorer"
-                        >
-                          <FolderOpen className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
-                          <span>Browse...</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-slate-700 dark:text-zinc-300">
-                          Quantization Format
-                        </label>
-                        <select
-                          value={newModelQuant}
-                          onChange={(e) => setNewModelQuant(e.target.value)}
-                          className="w-full px-3 py-2 rounded-xl text-xs bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 text-slate-900 dark:text-zinc-100 focus:outline-hidden focus:ring-2 focus:ring-cyan-500 font-mono cursor-pointer"
-                        >
-                          <option value="Q4_K_M">Q4_K_M (Recommended Balanced)</option>
-                          <option value="Q5_K_M">Q5_K_M (High Fidelity)</option>
-                          <option value="Q8_0">Q8_0 (Near Lossless)</option>
-                          <option value="Q3_K_M">Q3_K_M (Low VRAM)</option>
-                          <option value="FP16">FP16 (Full Float16)</option>
-                          <option value="GGUF / Auto">GGUF / Auto Detect</option>
-                        </select>
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-slate-700 dark:text-zinc-300">
-                          Context Window Length
-                        </label>
-                        <select
-                          value={newModelContext}
-                          onChange={(e) => setNewModelContext(e.target.value)}
-                          className="w-full px-3 py-2 rounded-xl text-xs bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 text-slate-900 dark:text-zinc-100 focus:outline-hidden focus:ring-2 focus:ring-cyan-500 font-mono cursor-pointer"
-                        >
-                          <option value="4,096 tokens">4,096 tokens (Fast)</option>
-                          <option value="8,192 tokens">8,192 tokens (Default)</option>
-                          <option value="16,384 tokens">16,384 tokens (Deep Context)</option>
-                          <option value="32,768 tokens">32,768 tokens (Codebase Long-Context)</option>
-                          <option value="65,536 tokens">65,536 tokens (Ultra Long)</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-bold text-slate-700 dark:text-zinc-300">
-                        Model Description &amp; Specialized Role
-                      </label>
-                      <input
-                        type="text"
-                        value={newModelDesc}
-                        onChange={(e) => setNewModelDesc(e.target.value)}
-                        placeholder="e.g. Fine-tuned code assistant for local TypeScript & Rust development"
-                        className="w-full px-3 py-2 rounded-xl text-xs bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 text-slate-900 dark:text-zinc-100 focus:outline-hidden focus:ring-2 focus:ring-cyan-500 font-mono"
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-end space-x-3 pt-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsAddingModel(false);
-                          setModelFormError('');
-                        }}
-                        className="px-4 py-2 rounded-xl border border-slate-300 dark:border-zinc-700 text-xs font-semibold text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800 transition cursor-pointer"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-sm transition cursor-pointer flex items-center space-x-1.5"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        <span>Register &amp; Activate Model</span>
-                      </button>
-                    </div>
-                  </form>
-                )}
-
-                {/* Section 1: Active Model Selection (Segmented Filter + Cards) */}
-                <div className="space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-bold text-xs text-slate-900 dark:text-zinc-100 uppercase tracking-wider">
-                        Available Inference Models
-                      </span>
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 font-mono">
-                        {DEFAULT_MODELS.length + customModels.length} Total
-                      </span>
-                    </div>
-
-                    {/* Segmented Filter: All | Default | Custom */}
-                    <div className="flex items-center p-1 rounded-xl bg-slate-200/70 dark:bg-zinc-900 border border-slate-300/60 dark:border-zinc-800 text-xs">
-                      <button
-                        type="button"
-                        onClick={() => setModelFilter('all')}
-                        className={`px-3 py-1 rounded-lg font-bold text-[11px] transition cursor-pointer ${
-                          modelFilter === 'all'
-                            ? 'bg-white dark:bg-zinc-800 text-cyan-600 dark:text-cyan-400 shadow-xs'
-                            : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
-                        }`}
-                      >
-                        All ({DEFAULT_MODELS.length + customModels.length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setModelFilter('default')}
-                        className={`px-3 py-1 rounded-lg font-bold text-[11px] transition cursor-pointer ${
-                          modelFilter === 'default'
-                            ? 'bg-white dark:bg-zinc-800 text-cyan-600 dark:text-cyan-400 shadow-xs'
-                            : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
-                        }`}
-                      >
-                        Default ({DEFAULT_MODELS.length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setModelFilter('custom')}
-                        className={`px-3 py-1 rounded-lg font-bold text-[11px] transition cursor-pointer ${
-                          modelFilter === 'custom'
-                            ? 'bg-white dark:bg-zinc-800 text-cyan-600 dark:text-cyan-400 shadow-xs'
-                            : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
-                        }`}
-                      >
-                        Custom User Models ({customModels.length})
-                      </button>
+                      <HardDrive className="w-5 h-5 text-emerald-500 shrink-0" />
                     </div>
                   </div>
 
-                  {/* Gemma 4 vs Qwen 2.5 Side-by-Side Comparison Showcase */}
-                  <div className="p-5 rounded-2xl bg-gradient-to-br from-cyan-50/50 via-white to-slate-50/50 dark:from-cyan-950/20 dark:via-zinc-900 dark:to-zinc-900/40 border-2 border-cyan-500/30 shadow-xs space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <Sparkles className="w-4 h-4 text-cyan-500" />
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-zinc-100 font-mono">
-                          Preloaded Engines: Gemma 4 vs Qwen 2.5 Comparison
-                        </h3>
-                      </div>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-100 dark:bg-cyan-900/60 text-cyan-700 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-800 font-semibold">
-                        Zero-Cloud Local Intelligence
+                  {/* Memory Allocation Slider */}
+                  <div className="pt-2 space-y-2">
+                    <div className="flex items-center justify-between text-xs font-mono">
+                      <span className="font-bold text-slate-700 dark:text-zinc-300">
+                        Permitted GhostBrain RAM Budget:
+                      </span>
+                      <span className="font-bold text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-950/60 px-3 py-1 rounded-lg border border-cyan-200 dark:border-cyan-800">
+                        {ramBudgetGB.toFixed(1)} GB of {freeHostRamGB} GB Free
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Gemma 4 Column */}
-                      <div className={`p-4 rounded-xl border transition-all ${
-                        selectedModel === 'Gemma 4 (2B Instruction)'
-                          ? 'border-cyan-500 bg-white dark:bg-zinc-900 ring-2 ring-cyan-500/60 shadow-sm'
-                          : 'border-slate-200 dark:border-zinc-800 bg-white/60 dark:bg-zinc-900/40'
-                      }`}>
-                        <div className="flex items-center justify-between mb-2">
-                          <div>
-                            <span className="font-bold text-xs text-slate-900 dark:text-zinc-100 block">
-                              Gemma 4 (2B Instruction)
-                            </span>
-                            <span className="text-[10px] text-cyan-600 dark:text-cyan-400 font-mono">
-                              Google DeepMind • Ultra-Lightweight
-                            </span>
-                          </div>
-                          <span className="text-[10px] px-2 py-0.5 rounded font-mono bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700">
-                            ~2.4 GB RAM
-                          </span>
-                        </div>
-
-                        <div className="space-y-1.5 text-[11px] text-slate-600 dark:text-zinc-400 font-mono border-y border-slate-100 dark:border-zinc-800 py-2.5 my-2">
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Context Window:</span>
-                            <strong className="text-slate-700 dark:text-zinc-300">8,192 tokens</strong>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Inference Speed:</span>
-                            <strong className="text-emerald-600 dark:text-emerald-400">Ultra-Fast (~48 t/s)</strong>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Best For:</span>
-                            <span className="text-slate-700 dark:text-zinc-300">Quick Extraction &amp; Summaries</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Battery Impact:</span>
-                            <span className="text-emerald-600 dark:text-emerald-400">Minimal / Low-Power</span>
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => handleInstallAndConnectModel('Gemma 4 (2B Instruction)')}
-                          className={`w-full py-2 rounded-xl text-xs font-bold font-mono transition cursor-pointer flex items-center justify-center space-x-1.5 ${
-                            selectedModel === 'Gemma 4 (2B Instruction)'
-                              ? 'bg-emerald-600 text-white shadow-xs'
-                              : 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-xs'
-                          }`}
-                        >
-                          {installingModel === 'Gemma 4 (2B Instruction)' ? (
-                            <span>Configuring Engine...</span>
-                          ) : selectedModel === 'Gemma 4 (2B Instruction)' ? (
-                            <>
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>Active Engine Connected</span>
-                            </>
-                          ) : (
-                            <>
-                              <Check className="w-3.5 h-3.5" />
-                              <span>Install &amp; Connect Gemma 4</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-
-                      {/* Qwen 2.5 Column */}
-                      <div className={`p-4 rounded-xl border transition-all ${
-                        selectedModel === 'Qwen 2.5 (7B Coder & Reasoning)'
-                          ? 'border-cyan-500 bg-white dark:bg-zinc-900 ring-2 ring-cyan-500/60 shadow-sm'
-                          : 'border-slate-200 dark:border-zinc-800 bg-white/60 dark:bg-zinc-900/40'
-                      }`}>
-                        <div className="flex items-center justify-between mb-2">
-                          <div>
-                            <span className="font-bold text-xs text-slate-900 dark:text-zinc-100 block">
-                              Qwen 2.5 (7B Coder &amp; Reasoning)
-                            </span>
-                            <span className="text-[10px] text-cyan-600 dark:text-cyan-400 font-mono">
-                              Alibaba Cloud • Deep Code &amp; Logic
-                            </span>
-                          </div>
-                          <span className="text-[10px] px-2 py-0.5 rounded font-mono bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700">
-                            ~5.4 GB RAM
-                          </span>
-                        </div>
-
-                        <div className="space-y-1.5 text-[11px] text-slate-600 dark:text-zinc-400 font-mono border-y border-slate-100 dark:border-zinc-800 py-2.5 my-2">
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Context Window:</span>
-                            <strong className="text-slate-700 dark:text-zinc-300">32,768 tokens (Codebase)</strong>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Inference Speed:</span>
-                            <strong className="text-slate-700 dark:text-zinc-300">High (~32 t/s)</strong>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Best For:</span>
-                            <span className="text-slate-700 dark:text-zinc-300">Code Analysis &amp; Multi-Step RAG</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-slate-400">Tool Calling:</span>
-                            <span className="text-cyan-600 dark:text-cyan-400">JSON &amp; Structured Output</span>
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => handleInstallAndConnectModel('Qwen 2.5 (7B Coder & Reasoning)')}
-                          className={`w-full py-2 rounded-xl text-xs font-bold font-mono transition cursor-pointer flex items-center justify-center space-x-1.5 ${
-                            selectedModel === 'Qwen 2.5 (7B Coder & Reasoning)'
-                              ? 'bg-emerald-600 text-white shadow-xs'
-                              : 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-xs'
-                          }`}
-                        >
-                          {installingModel === 'Qwen 2.5 (7B Coder & Reasoning)' ? (
-                            <span>Configuring Engine...</span>
-                          ) : selectedModel === 'Qwen 2.5 (7B Coder & Reasoning)' ? (
-                            <>
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>Active Engine Connected</span>
-                            </>
-                          ) : (
-                            <>
-                              <Check className="w-3.5 h-3.5" />
-                              <span>Install &amp; Connect Qwen 2.5</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                                    {/* Grid of Models */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                    {/* Default Models */}
-                    {(modelFilter === 'all' || modelFilter === 'default') &&
-                      DEFAULT_MODELS.map((m) => {
-                        const isSelected = selectedModel === m.name;
-                        return (
-                          <div
-                            key={m.name}
-                            onClick={() => setSelectedModel(m.name)}
-                            className={`p-4 rounded-2xl border transition-all cursor-pointer relative group ${
-                              isSelected
-                                ? 'border-cyan-500 bg-white dark:bg-zinc-900 ring-2 ring-cyan-500/80 shadow-md shadow-cyan-500/10'
-                                : 'border-slate-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/50 hover:border-slate-300 dark:hover:border-zinc-700'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between mb-1.5">
-                              <div className="flex items-center space-x-2">
-                                <span className="font-bold text-xs text-slate-900 dark:text-zinc-100">{m.name}</span>
-                                <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700">
-                                  Default
-                                </span>
-                              </div>
-                              <span className="text-[10px] px-2 py-0.5 rounded font-mono font-semibold bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700">
-                                {m.backend}
-                              </span>
-                            </div>
-
-                            <div className="flex items-center space-x-2 text-[10px] text-cyan-600 dark:text-cyan-400 font-mono font-semibold mb-2">
-                              <span>{m.quant}</span>
-                              <span>&bull;</span>
-                              <span>{m.context}</span>
-                              <span>&bull;</span>
-                              <span className="text-slate-400 dark:text-zinc-500">~{m.ramEstimate} RAM</span>
-                            </div>
-
-                            <p className="text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed mb-3">
-                              {m.desc}
-                            </p>
-
-                            <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-zinc-800/80 text-[10px]">
-                              <span className="text-slate-400 dark:text-zinc-500 font-mono">{m.family}</span>
-                              {isSelected ? (
-                                <span className="flex items-center space-x-1 text-cyan-600 dark:text-cyan-400 font-bold">
-                                  <CheckCircle2 className="w-3.5 h-3.5" />
-                                  <span>ACTIVE ENGINE</span>
-                                </span>
-                              ) : (
-                                <span className="text-slate-400 group-hover:text-slate-600 dark:group-hover:text-zinc-300 font-medium">
-                                  Click to activate
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-
-                    {/* Custom User Models */}
-                    {(modelFilter === 'all' || modelFilter === 'custom') &&
-                      customModels.map((m) => {
-                        const isSelected = selectedModel === m.name;
-                        return (
-                          <div
-                            key={m.id}
-                            onClick={() => setSelectedModel(m.name)}
-                            className={`p-4 rounded-2xl border transition-all cursor-pointer relative group ${
-                              isSelected
-                                ? 'border-cyan-500 bg-white dark:bg-zinc-900 ring-2 ring-cyan-500/80 shadow-md shadow-cyan-500/10'
-                                : 'border-amber-200/60 dark:border-amber-900/40 bg-white/70 dark:bg-zinc-900/50 hover:border-amber-300 dark:hover:border-amber-800'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between mb-1.5">
-                              <div className="flex items-center space-x-2">
-                                <span className="font-bold text-xs text-slate-900 dark:text-zinc-100">{m.name}</span>
-                                <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900">
-                                  Custom User
-                                </span>
-                              </div>
-                              <div className="flex items-center space-x-1.5">
-                                <span className="text-[10px] px-2 py-0.5 rounded font-mono font-semibold bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700">
-                                  {m.backend}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={(e) => handleDeleteCustomModel(m.id, m.name, e)}
-                                  className="p-1 rounded text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
-                                  title="Delete Custom Model"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center space-x-2 text-[10px] text-amber-600 dark:text-amber-400 font-mono font-semibold mb-1.5">
-                              <span>{m.quant}</span>
-                              <span>&bull;</span>
-                              <span>{m.context}</span>
-                              <span>&bull;</span>
-                              <span className="text-slate-400 dark:text-zinc-500">~{m.ramEstimate} RAM</span>
-                            </div>
-
-                            <div className="text-[10px] text-slate-600 dark:text-zinc-400 font-mono truncate bg-slate-100/70 dark:bg-zinc-800/60 px-2 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 mb-2">
-                              {m.pathOrEndpoint}
-                            </div>
-
-                            <p className="text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed mb-3">
-                              {m.desc}
-                            </p>
-
-                            <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-zinc-800/80 text-[10px]">
-                              <span className="text-amber-600 dark:text-amber-400 font-mono font-medium">User Disk GGUF</span>
-                              {isSelected ? (
-                                <span className="flex items-center space-x-1 text-cyan-600 dark:text-cyan-400 font-bold">
-                                  <CheckCircle2 className="w-3.5 h-3.5" />
-                                  <span>ACTIVE ENGINE</span>
-                                </span>
-                              ) : (
-                                <span className="text-slate-400 group-hover:text-slate-600 dark:group-hover:text-zinc-300 font-medium">
-                                  Click to activate
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-                </div>
-
-                {/* Section 2: Live System RAM Budget & Dynamic Memory Allocation Slider */}
-                <div className="p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 space-y-6 shadow-xs">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                    <div>
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-zinc-100 flex items-center space-x-2">
-                        <HardDrive className="w-4 h-4 text-cyan-500" />
-                        <span>Live System RAM Budget &amp; Memory Allocation</span>
-                      </h3>
-                      <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
-                        Define maximum physical memory that GhostBrain and its inference sidecar may consume from your live system.
-                      </p>
-                    </div>
-
-                    <div className="flex items-center space-x-2 shrink-0">
-                      <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-mono">Live Detected Host:</span>
-                      <span className="text-xs font-bold font-mono px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700">
-                        {hostTotalRamGB.toFixed(1)} GB Total RAM
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* RAM Slider Header & Live Value Indicator */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-700 dark:text-zinc-300 flex items-center space-x-1.5">
-                        <Gauge className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
-                        <span>GhostBrain App Memory Cap:</span>
-                      </span>
-                      <span className="text-xs font-bold text-cyan-600 dark:text-cyan-400 font-mono bg-cyan-50 dark:bg-cyan-950/60 px-3 py-1 rounded-lg border border-cyan-200 dark:border-cyan-800">
-                        {ramBudgetGB.toFixed(1)} GB Max System RAM
-                      </span>
-                    </div>
-
-                    {/* Interactive Slider */}
                     <input
                       type="range"
                       min="1.0"
-                      max="14.0"
+                      max={maxSliderGB}
                       step="0.5"
                       value={ramBudgetGB}
                       onChange={(e) => setRamBudgetGB(Number(e.target.value))}
                       className="w-full accent-cyan-600 cursor-pointer h-2.5 bg-slate-100 dark:bg-zinc-800 rounded-lg transition"
                     />
 
-                    {/* Scale markers */}
                     <div className="flex justify-between text-[10px] text-slate-400 dark:text-zinc-500 font-mono">
-                      <span>1.0 GB (Minimal)</span>
+                      <span>1.0 GB (Minimum)</span>
+                      <span>2.5 GB</span>
                       <span>4.0 GB</span>
-                      <span>8.0 GB</span>
-                      <span>12.0 GB</span>
-                      <span>14.0 GB (Max Safe Limit)</span>
+                      <span>{maxSliderGB.toFixed(1)} GB (Safe Free Limit)</span>
                     </div>
-                  </div>
-
-                  {/* Tri-Color Dynamic Visual Memory Breakdown Bar */}
-                  <div className="space-y-2">
-                    <div className="text-[11px] font-bold text-slate-700 dark:text-zinc-300 flex items-center justify-between">
-                      <span>Real-Time Host Memory Partitioning Breakdown</span>
-                      <span className="text-[10px] text-slate-400 font-mono">
-                        Headroom: {Math.max(0, hostTotalRamGB - osReservedRamGB - ramBudgetGB).toFixed(1)} GB Free
-                      </span>
-                    </div>
-
-                    <div className="h-4 w-full bg-slate-100 dark:bg-zinc-800 rounded-lg overflow-hidden flex shadow-inner">
-                      {/* Segment 1: OS Reserved Floor (4 GB) */}
-                      <div
-                        style={{ width: `${(osReservedRamGB / hostTotalRamGB) * 100}%` }}
-                        className="bg-slate-400 dark:bg-zinc-600 h-full transition-all duration-300"
-                        title={`Windows OS & System Floor: ${osReservedRamGB.toFixed(1)} GB (Guaranteed minimum)`}
-                      />
-                      {/* Segment 2: GhostBrain App RAM Budget */}
-                      <div
-                        style={{ width: `${(ramBudgetGB / hostTotalRamGB) * 100}%` }}
-                        className="bg-cyan-500 dark:bg-cyan-500 h-full transition-all duration-300"
-                        title={`GhostBrain Model & Vector Cache Budget: ${ramBudgetGB.toFixed(1)} GB`}
-                      />
-                      {/* Segment 3: Free Headroom */}
-                      <div
-                        style={{
-                          width: `${Math.max(0, (1 - (osReservedRamGB + ramBudgetGB) / hostTotalRamGB) * 100)}%`
-                        }}
-                        className="bg-emerald-500/80 dark:bg-emerald-500/60 h-full transition-all duration-300"
-                        title={`Free System Headroom: ${Math.max(0, hostTotalRamGB - osReservedRamGB - ramBudgetGB).toFixed(1)} GB`}
-                      />
-                    </div>
-
-                    {/* Legend */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-[11px] font-mono">
-                      <div className="flex items-center space-x-2">
-                        <div className="w-2.5 h-2.5 rounded-full bg-slate-400 dark:bg-zinc-600 shrink-0" />
-                        <span className="text-slate-600 dark:text-zinc-400">
-                          OS Floor: <strong>{osReservedRamGB.toFixed(1)} GB (25%)</strong>
-                        </span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-2.5 h-2.5 rounded-full bg-cyan-500 shrink-0" />
-                        <span className="text-cyan-700 dark:text-cyan-300">
-                          GhostBrain: <strong>{ramBudgetGB.toFixed(1)} GB ({((ramBudgetGB / hostTotalRamGB) * 100).toFixed(0)}%)</strong>
-                        </span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
-                        <span className="text-emerald-700 dark:text-emerald-400">
-                          Free Headroom: <strong>{Math.max(0, hostTotalRamGB - osReservedRamGB - ramBudgetGB).toFixed(1)} GB</strong>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* RAM Quick Presets */}
-                  <div className="pt-2 border-t border-slate-100 dark:border-zinc-800/80 flex flex-wrap items-center gap-2">
-                    <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider mr-1">
-                      Quick Presets:
-                    </span>
-                    {[
-                      { label: 'Eco Saver (3.0 GB)', val: 3.0 },
-                      { label: 'Balanced (6.0 GB - Rec.)', val: 6.0 },
-                      { label: 'Deep Context (10.0 GB)', val: 10.0 },
-                      { label: 'Turbo Max (13.5 GB)', val: 13.5 }
-                    ].map((p) => (
-                      <button
-                        key={p.val}
-                        type="button"
-                        onClick={() => setRamBudgetGB(p.val)}
-                        className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-semibold transition cursor-pointer ${
-                          ramBudgetGB === p.val
-                            ? 'bg-cyan-600 text-white shadow-xs'
-                            : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-700'
-                        }`}
-                      >
-                        {p.label}
-                      </button>
-                    ))}
                   </div>
                 </div>
 
-                {/* Section 3: Hardware Specifications, GPU Offload & CPU Compute Pipeline */}
-                <div className="p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 space-y-6 shadow-xs">
+                {/* Section 2: Integrated Model Choices (3 Clean Performance Tiers) */}
+                <div className="space-y-4">
                   <div>
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-zinc-100 flex items-center space-x-2">
-                      <SlidersHorizontal className="w-4 h-4 text-cyan-500" />
-                      <span>Hardware Execution Engine &amp; Compute Pipeline</span>
-                    </h3>
-                    <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
-                      Fine-tune GPU VRAM offload layers, CPU thread allocations, and hardware matrix acceleration.
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-zinc-100 font-mono">
+                        GhostBrain Integrated AI Engines ({TIERS.length} Performance Levels)
+                      </h3>
+                      <span className="text-[10px] text-cyan-600 dark:text-cyan-400 font-mono bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-200 dark:border-cyan-800">
+                        1-Click Ready
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
+                      Choose the performance level tailored to your computer. No technical model names or token counts required.
                     </p>
                   </div>
 
-                  {/* Grid of Hardware Sliders & Selectors */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* GPU Offload Layers Slider */}
-                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-zinc-800/40 border border-slate-200 dark:border-zinc-800 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-800 dark:text-zinc-200 flex items-center space-x-1.5">
-                          <Layers className="w-3.5 h-3.5 text-cyan-500" />
-                          <span>GPU VRAM Offload Layers:</span>
-                        </span>
-                        <span className="text-xs font-mono font-bold text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-950/60 px-2.5 py-0.5 rounded border border-cyan-200 dark:border-cyan-800">
-                          {gpuOffloadLayers === 0
-                            ? '0 (CPU-Only)'
-                            : `${gpuOffloadLayers} / 33 Layers (~${(gpuOffloadLayers * 0.12).toFixed(1)} GB VRAM)`}
-                        </span>
-                      </div>
+                  {/* 3 Tier Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {TIERS.map((tier) => {
+                      const isSelected = selectedTier === tier.id;
+                      const satisfiesBudget = ramBudgetGB >= tier.minRam;
 
-                      <input
-                        type="range"
-                        min="0"
-                        max="33"
-                        value={gpuOffloadLayers}
-                        onChange={(e) => setGpuOffloadLayers(Number(e.target.value))}
-                        className="w-full accent-cyan-600 cursor-pointer h-2 bg-slate-200 dark:bg-zinc-700 rounded-lg"
-                      />
+                      return (
+                        <div
+                          key={tier.id}
+                          onClick={() => setSelectedTier(tier.id as any)}
+                          className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
+                            isSelected
+                              ? 'border-cyan-500 bg-white dark:bg-zinc-900 ring-2 ring-cyan-500/70 shadow-sm'
+                              : 'border-slate-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/40 hover:border-slate-300 dark:hover:border-zinc-700'
+                          }`}
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-slate-900 dark:text-zinc-100">
+                                {tier.name}
+                              </span>
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
+                                satisfiesBudget
+                                  ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
+                                  : 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
+                              }`}>
+                                Min {tier.minRam} GB RAM
+                              </span>
+                            </div>
 
-                      <p className="text-[11px] text-slate-500 dark:text-zinc-400 leading-normal">
-                        Layers offloaded to dedicated GPU VRAM (NVIDIA / Vulkan / DirectML) for 10x faster token generation. Set to 0 for pure host CPU execution.
-                      </p>
-                    </div>
+                            <div className="text-[10px] text-cyan-600 dark:text-cyan-400 font-mono font-semibold">
+                              {tier.badge} • {tier.fit}
+                            </div>
 
-                    {/* CPU Compute Threads Slider */}
-                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-zinc-800/40 border border-slate-200 dark:border-zinc-800 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-800 dark:text-zinc-200 flex items-center space-x-1.5">
-                          <Cpu className="w-3.5 h-3.5 text-cyan-500" />
-                          <span>CPU Compute Threads:</span>
-                        </span>
-                        <span className="text-xs font-mono font-bold text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-950/60 px-2.5 py-0.5 rounded border border-cyan-200 dark:border-cyan-800">
-                          {cpuThreads} Worker Cores
-                        </span>
-                      </div>
+                            <p className="text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed">
+                              {tier.desc}
+                            </p>
+                          </div>
 
-                      <input
-                        type="range"
-                        min="1"
-                        max="16"
-                        value={cpuThreads}
-                        onChange={(e) => setCpuThreads(Number(e.target.value))}
-                        className="w-full accent-cyan-600 cursor-pointer h-2 bg-slate-200 dark:bg-zinc-700 rounded-lg"
-                      />
+                          <div className="pt-3 mt-3 border-t border-slate-100 dark:border-zinc-800/80 flex items-center justify-between text-[10px] font-mono">
+                            {satisfiesBudget ? (
+                              <span className="flex items-center space-x-1 text-emerald-600 dark:text-emerald-400 font-semibold">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>Hardware Supported</span>
+                              </span>
+                            ) : (
+                              <span className="flex items-center space-x-1 text-amber-600 dark:text-amber-400 font-semibold">
+                                <AlertCircle className="w-3.5 h-3.5" />
+                                <span>Requires {tier.minRam} GB Budget</span>
+                              </span>
+                            )}
 
-                      <p className="text-[11px] text-slate-500 dark:text-zinc-400 leading-normal">
-                        Allocates {cpuThreads} threads to matrix multiplication. Reserves {Math.max(0, 8 - cpuThreads)} threads to ensure zero Windows desktop latency.
-                      </p>
-                    </div>
-
-                    {/* GPU Hardware Provider Selector */}
-                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-zinc-800/40 border border-slate-200 dark:border-zinc-800 space-y-2">
-                      <label className="text-xs font-bold text-slate-800 dark:text-zinc-200 block">
-                        Hardware Acceleration Backend
-                      </label>
-                      <select
-                        value={gpuBackend}
-                        onChange={(e) => setGpuBackend(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl text-xs bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 text-slate-900 dark:text-zinc-100 font-mono cursor-pointer"
-                      >
-                        <option value="auto">Auto-Detect (DirectML / Vulkan Hardware Discovery)</option>
-                        <option value="cuda">NVIDIA CUDA cuBLAS (GeForce RTX / Quadro)</option>
-                        <option value="vulkan">Vulkan / AMD ROCm Cross-Vendor Compute</option>
-                        <option value="cpu">Host CPU Vector Instructions (AVX-512 / AVX2)</option>
-                      </select>
-                      <p className="text-[10px] text-slate-500 dark:text-zinc-400">
-                        Default auto-discovery binds to the fastest available GPU shader engine on Windows.
-                      </p>
-                    </div>
-
-                    {/* KV-Cache Memory Limit & Quant */}
-                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-zinc-800/40 border border-slate-200 dark:border-zinc-800 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <label className="text-xs font-bold text-slate-800 dark:text-zinc-200">
-                          KV-Cache Memory Size
-                        </label>
-                        <span className="text-[10px] font-mono text-cyan-600 dark:text-cyan-400 font-bold">
-                          {kvCacheSizeMB} MB ({kvCacheType})
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-4 gap-1.5 pt-1">
-                        {[256, 512, 1024, 2048].map((size) => (
-                          <button
-                            key={size}
-                            type="button"
-                            onClick={() => setKvCacheSizeMB(size)}
-                            className={`py-1.5 rounded-lg text-xs font-mono font-semibold transition cursor-pointer ${
-                              kvCacheSizeMB === size
-                                ? 'bg-cyan-600 text-white'
-                                : 'bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-400 hover:bg-slate-100'
-                            }`}
-                          >
-                            {size} MB
-                          </button>
-                        ))}
-                      </div>
-                      <p className="text-[10px] text-slate-500 dark:text-zinc-400">
-                        Limits attention key-value matrix RAM allocation during long document chats.
-                      </p>
-                    </div>
+                            {isSelected && (
+                              <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse"></span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
 
-                  {/* Advanced Hardware Feature Toggles */}
-                  <div className="space-y-3 pt-2">
-                    {/* Flash Attention Toggle */}
-                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-zinc-800/40 border border-slate-200 dark:border-zinc-800 flex items-center justify-between">
-                      <div className="space-y-0.5 pr-4">
-                        <div className="flex items-center space-x-2">
-                          <Sparkles className="w-4 h-4 text-cyan-500" />
-                          <span className="font-bold text-xs text-slate-900 dark:text-zinc-100">
-                            Flash Attention v2 (FA2) Fast Kernel
-                          </span>
+                  {/* Section 3: Smart Hardware Guardrail & 1-Click Action */}
+                  <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 space-y-3 shadow-xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div>
+                        <div className="text-xs font-bold text-slate-900 dark:text-zinc-100 flex items-center space-x-2">
+                          <span>Selected Tier:</span>
+                          <strong className="text-cyan-600 dark:text-cyan-400 font-mono">{currentTierObj.name}</strong>
                         </div>
-                        <p className="text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed">
-                          Enables fused attention kernels to reduce VRAM consumption by ~30% and accelerate token processing for long contexts.
-                        </p>
+                        <div className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
+                          {isBudgetSufficient ? (
+                            <span className="text-emerald-600 dark:text-emerald-400 flex items-center space-x-1 font-medium">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Specifications validated! Your {ramBudgetGB.toFixed(1)} GB allocation satisfies the {currentTierObj.minRam} GB requirement.</span>
+                            </span>
+                          ) : (
+                            <span className="text-amber-600 dark:text-amber-400 flex items-center space-x-1 font-medium">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              <span>Insufficient RAM budget. Move the slider up to at least {currentTierObj.minRam} GB to unlock this tier.</span>
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <input
-                        type="checkbox"
-                        checked={flashAttention}
-                        onChange={(e) => setFlashAttention(e.target.checked)}
-                        className="w-5 h-5 rounded text-cyan-600 accent-cyan-600 cursor-pointer shrink-0"
-                      />
+
+                      {/* 1-Click Action Button */}
+                      <button
+                        type="button"
+                        disabled={!isBudgetSufficient || isSettingUpTier}
+                        onClick={async () => {
+                          if (!isBudgetSufficient) return;
+                          setIsSettingUpTier(true);
+                          setTierProgress(25);
+                          try {
+                            if (window.ghostbrain?.setupTier) {
+                              await window.ghostbrain.setupTier(selectedTier);
+                            }
+                            setTierProgress(100);
+                            setSelectedModel(`${currentTierObj.name} Engine`);
+                            localStorage.setItem('ghostbrain_active_tier', selectedTier);
+                          } catch (err) {
+                            console.error('Setup tier error:', err);
+                          } finally {
+                            setTimeout(() => {
+                              setIsSettingUpTier(false);
+                              setTierProgress(0);
+                            }, 800);
+                          }
+                        }}
+                        className={`px-5 py-2.5 rounded-xl font-bold font-mono text-xs transition cursor-pointer flex items-center justify-center space-x-2 shrink-0 ${
+                          !isBudgetSufficient
+                            ? 'bg-slate-100 dark:bg-zinc-800 text-slate-400 dark:text-zinc-600 cursor-not-allowed border border-slate-200 dark:border-zinc-700'
+                            : isSettingUpTier
+                            ? 'bg-cyan-600 text-white shadow-xs'
+                            : selectedModel.includes(currentTierObj.name)
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-md shadow-cyan-600/20'
+                        }`}
+                      >
+                        {isSettingUpTier ? (
+                          <span>Installing Engine ({tierProgress}%)...</span>
+                        ) : selectedModel.includes(currentTierObj.name) ? (
+                          <>
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>Active Engine Connected</span>
+                          </>
+                        ) : isBudgetSufficient ? (
+                          <>
+                            <Check className="w-4 h-4" />
+                            <span>Download &amp; Setup ({currentTierObj.name})</span>
+                          </>
+                        ) : (
+                          <>
+                            <AlertCircle className="w-4 h-4" />
+                            <span>Requires {currentTierObj.minRam} GB Budget</span>
+                          </>
+                        )}
+                      </button>
                     </div>
 
-                    {/* NVMe mmap Toggle */}
-                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-zinc-800/40 border border-slate-200 dark:border-zinc-800 flex items-center justify-between">
-                      <div className="space-y-0.5 pr-4">
-                        <div className="flex items-center space-x-2">
-                          <HardDrive className="w-4 h-4 text-cyan-500" />
-                          <span className="font-bold text-xs text-slate-900 dark:text-zinc-100">
-                            Zero-Copy NVMe Memory-Mapped I/O (mmap)
-                          </span>
+                    {isSettingUpTier && (
+                      <div className="space-y-1 pt-1">
+                        <div className="w-full bg-slate-100 dark:bg-zinc-800 h-2 rounded-full overflow-hidden">
+                          <div
+                            className="bg-cyan-500 h-full rounded-full transition-all duration-300"
+                            style={{ width: `${tierProgress}%` }}
+                          />
                         </div>
-                        <p className="text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed">
-                          Streams model weights directly from NVMe SSD virtual memory pages, allowing models larger than RAM to run without swap crashes.
-                        </p>
+                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 font-mono text-right">
+                          Configuring local sidecar... {tierProgress}%
+                        </div>
                       </div>
-                      <input
-                        type="checkbox"
-                        checked={mmapEnabled}
-                        onChange={(e) => setMmapEnabled(e.target.checked)}
-                        className="w-5 h-5 rounded text-cyan-600 accent-cyan-600 cursor-pointer shrink-0"
-                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* Section 4: Power User Custom Model File Loader */}
+                <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 space-y-2.5 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-slate-800 dark:text-zinc-200 font-mono">
+                        Have Your Own Model on Disk?
+                      </span>
+                      <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                        Power users can load any custom `.gguf` file directly from local storage.
+                      </p>
                     </div>
 
-                    {/* Low-Power & Gaming VRAM Release Toggle */}
-                    <div className="p-4 rounded-xl bg-white dark:bg-zinc-900 border border-amber-300 dark:border-amber-900/60 flex items-center justify-between">
-                      <div className="space-y-0.5 pr-4">
-                        <div className="flex items-center space-x-2">
-                          <Zap className="w-4 h-4 text-amber-500" />
-                          <span className="font-bold text-xs text-slate-900 dark:text-zinc-100">
-                            Low-Power &amp; Gaming VRAM Instant Release (<span className="text-amber-500">&lt; 3s Release</span>)
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed">
-                          Automatically unloads local LLM weights from dedicated GPU VRAM to host RAM when 3D games or battery-saver mode are detected.
-                        </p>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={lowPowerGamingMode}
-                        onChange={(e) => setLowPowerGamingMode(e.target.checked)}
-                        className="w-5 h-5 rounded text-cyan-600 accent-cyan-600 cursor-pointer shrink-0"
-                      />
-                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (window.ghostbrain?.selectModelFile) {
+                          try {
+                            const selected = await window.ghostbrain.selectModelFile();
+                            if (selected) {
+                              const base = selected.split(/[/\\]/).pop()?.replace(/\.[^/.]+$/, '') || 'Custom Model';
+                              setSelectedModel(`Custom: ${base}`);
+                              localStorage.setItem('ghostbrain_custom_path', selected);
+                            }
+                          } catch (err) {
+                            console.error('File select error:', err);
+                          }
+                        }
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl border border-slate-300 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 text-xs font-mono font-semibold hover:border-cyan-500 transition flex items-center space-x-1.5 cursor-pointer shrink-0"
+                    >
+                      <FolderOpen className="w-3.5 h-3.5 text-cyan-500" />
+                      <span>Browse .gguf File...</span>
+                    </button>
                   </div>
                 </div>
               </section>
-            )}
+            );
+            })()}
 
             {/* 3. HYBRID RRF SEARCH TUNING */}
             {activeTab === 'search' && (

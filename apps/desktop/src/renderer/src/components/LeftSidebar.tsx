@@ -8,6 +8,7 @@ interface LeftSidebarProps {
   pairedClients: PairedClient[];
   onAddDirectoryClick: () => void;
   onDirectoryClick?: (directory: WatchedDirectory) => void;
+  onOpenSettings?: () => void;
 }
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
@@ -16,6 +17,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   pairedClients,
   onAddDirectoryClick,
   onDirectoryClick,
+  onOpenSettings,
 }) => {
   const hostTotalGB = (telemetry.hostTotalRamMB ? telemetry.hostTotalRamMB / 1024 : 16.0);
   const hostUsedGB = (telemetry.hostUsedRamMB ? telemetry.hostUsedRamMB / 1024 : 5.8);
@@ -138,9 +140,16 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           </div>
 
           {/* ACTIVE LOCAL LLM STATUS CARD (Real Active vs Offline State) */}
-          <div className="col-span-2 p-2.5 rounded-lg bg-white dark:bg-zinc-900/80 border border-slate-200 dark:border-zinc-800/90 shadow-xs">
+          <div
+            onClick={onOpenSettings}
+            className={`col-span-2 p-2.5 rounded-lg bg-white dark:bg-zinc-900/80 border transition-all ${
+              telemetry.isModelOnline
+                ? 'border-slate-200 dark:border-zinc-800/90 shadow-xs'
+                : 'border-amber-200/80 dark:border-amber-900/40 hover:border-amber-400 dark:hover:border-amber-700 cursor-pointer shadow-xs hover:shadow-sm'
+            }`}
+          >
             <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wide">
-              <span className="text-slate-500 dark:text-zinc-400">ACTIVE LOCAL LLM</span>
+              <span className="text-slate-500 dark:text-zinc-400 font-mono">ACTIVE LOCAL AI</span>
               {telemetry.isModelOnline ? (
                 <span className="flex items-center space-x-1 text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.2 rounded border border-emerald-200 dark:border-emerald-800">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -160,7 +169,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   <span className="text-xs font-bold text-cyan-700 dark:text-cyan-300 font-mono">
                     {telemetry.activeModel}
                   </span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700">
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 font-mono">
                     {telemetry.backend}
                   </span>
                 </div>
@@ -171,12 +180,17 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               </div>
             ) : (
               <div className="mt-1.5 space-y-1">
-                <div className="flex items-center space-x-1.5 text-xs text-slate-700 dark:text-zinc-300 font-mono font-medium">
-                  <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                  <span>No Local Model Active</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-1.5 text-xs text-slate-700 dark:text-zinc-300 font-mono font-medium">
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    <span>No Local Model Active</span>
+                  </div>
+                  <span className="text-[9px] text-amber-600 dark:text-amber-400 font-mono font-semibold underline">
+                    Setup &rarr;
+                  </span>
                 </div>
                 <p className="text-[10px] text-slate-400 dark:text-zinc-500 leading-normal">
-                  Configure Gemma 4 or Qwen 2.5 in Settings to enable zero-cloud AI queries.
+                  Click to select an integrated AI performance tier in Settings.
                 </p>
               </div>
             )}
