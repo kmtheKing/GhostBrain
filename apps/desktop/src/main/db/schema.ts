@@ -92,3 +92,29 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, created_at);
 `;
+
+export const SCHEMA_V2 = `
+CREATE TABLE IF NOT EXISTS paired_devices (
+  id           TEXT PRIMARY KEY,
+  name         TEXT NOT NULL,
+  kind         TEXT NOT NULL CHECK (kind IN ('mobile','tablet','laptop')),
+  fingerprint  TEXT NOT NULL UNIQUE,
+  x25519_pub   BLOB,
+  connection   TEXT NOT NULL DEFAULT 'Direct Wi-Fi P2P',
+  ip           TEXT,
+  permissions  TEXT NOT NULL DEFAULT 'Full Query + Clip',
+  status       TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','syncing','idle','revoked')),
+  last_ping_at INTEGER,
+  created_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_paired_devices_status ON paired_devices(status);
+
+CREATE TABLE IF NOT EXISTS pairing_sessions (
+  user_code        TEXT PRIMARY KEY,
+  device_code_hash TEXT NOT NULL,
+  fingerprint      TEXT NOT NULL,
+  expires_at       INTEGER NOT NULL,
+  created_at       INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pairing_sessions_exp ON pairing_sessions(expires_at);
+`;

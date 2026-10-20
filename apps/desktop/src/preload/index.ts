@@ -8,7 +8,9 @@ import type {
   ChatTokenPayload,
   ChatDonePayload,
   RelayStatus,
-  SystemTelemetry
+  SystemTelemetry,
+  PairedDeviceRecord,
+  PairingSessionInfo
 } from '@ghostbrain/shared-types';
 
 const api: GhostBrainApi = {
@@ -55,6 +57,11 @@ const api: GhostBrainApi = {
   // Licensing
   getLicenseStatus: () => ipcRenderer.invoke('license:status'),
   activateLicense: (key: string) => ipcRenderer.invoke('license:activate', key),
+
+  // Device Pairing & Keychain
+  generatePairingSession: (): Promise<PairingSessionInfo> => ipcRenderer.invoke('devices:generatePairing'),
+  listPairedDevices: (): Promise<PairedDeviceRecord[]> => ipcRenderer.invoke('devices:list'),
+  revokePairedDevice: (deviceId: string): Promise<boolean> => ipcRenderer.invoke('devices:revoke', deviceId),
 
   // System Telemetry & Native Dialogs
   getSystemTelemetry: (): Promise<SystemTelemetry> => ipcRenderer.invoke('system:telemetry'),

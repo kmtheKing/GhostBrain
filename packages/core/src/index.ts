@@ -6,3 +6,4 @@ export * from './sanitizer.js';
 export * from './prompt.js';
 export * from './llm/provider.js';
 export * from './llm/ollama.js';
+export * from './crypto.js';

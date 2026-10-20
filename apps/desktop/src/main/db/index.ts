@@ -3,7 +3,7 @@ import * as sqliteVec from 'sqlite-vec';
 import { app } from 'electron';
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
-import { SCHEMA_V1 } from './schema.js';
+import { SCHEMA_V1, SCHEMA_V2 } from './schema.js';
 
 let dbInstance: DatabaseInstance | null = null;
 
@@ -40,6 +40,7 @@ export function initDatabase(customPath?: string): DatabaseInstance {
 
   // Execute base tables
   db.exec(SCHEMA_V1);
+  db.exec(SCHEMA_V2);
 
   // Setup vec0 and FTS5 if not already initialized
   try {

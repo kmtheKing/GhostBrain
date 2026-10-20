@@ -60,6 +60,27 @@ export function App() {
     installedModels: []
   });
 
+  // Reload real paired clients from database via IPC
+  const reloadPairedClients = useCallback(async () => {
+    if (window.ghostbrain?.listPairedDevices) {
+      try {
+        const devices = await window.ghostbrain.listPairedDevices();
+        if (devices) {
+          const mapped: PairedClient[] = devices.map((d) => ({
+            id: d.id,
+            name: d.name,
+            ip: d.ip || '192.168.1.42',
+            status: (d.status === 'revoked' ? 'idle' : d.status) as any,
+            type: d.kind
+          }));
+          setPairedClients(mapped);
+        }
+      } catch (err) {
+        console.error('Failed to load paired clients:', err);
+      }
+    }
+  }, []);
+
   // Reload real folders from Electron database via IPC
   const reloadFolders = useCallback(async () => {
     if (window.ghostbrain?.listFolders) {
@@ -105,6 +126,7 @@ export function App() {
 
   useEffect(() => {
     reloadFolders();
+    reloadPairedClients();
     refreshTelemetry();
 
     // Poll telemetry every 3 seconds for live hardware metrics
@@ -131,7 +153,7 @@ export function App() {
       unsubIndex?.();
       unsubMax?.();
     };
-  }, [reloadFolders, refreshTelemetry]);
+  }, [reloadFolders, reloadPairedClients, refreshTelemetry]);
 
   const handleAddDirectory = async (newDir: Omit<WatchedDirectory, 'id'>) => {
     if (window.ghostbrain?.addFolder) {

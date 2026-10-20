@@ -300,9 +300,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setSelectedModel(currentModel);
   }, [currentMode, currentModel]);
 
-  // Countdown timer for pairing OTP
+  const loadPairingAndDevices = async () => {
+    if (window.ghostbrain?.generatePairingSession) {
+      try {
+        const session = await window.ghostbrain.generatePairingSession();
+        if (session) {
+          setOtpCode(session.userCode);
+          setCountdownSec(session.expiresInSec || 300);
+        }
+      } catch (err) {
+        console.error('Failed to generate pairing session:', err);
+      }
+    }
+    if (window.ghostbrain?.listPairedDevices) {
+      try {
+        const devices = await window.ghostbrain.listPairedDevices();
+        if (devices && devices.length > 0) {
+          setConnectedDevices(devices as any);
+        }
+      } catch (err) {
+        console.error('Failed to load paired devices:', err);
+      }
+    }
+  };
+
+  // Countdown timer and live pairing session load
   useEffect(() => {
     if (!isOpen || activeTab !== 'network') return;
+    loadPairingAndDevices();
+
     const interval = setInterval(() => {
       setCountdownSec((prev) => (prev > 1 ? prev - 1 : 300));
     }, 1000);
@@ -393,7 +419,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
-  const handleRegenerateOtp = () => {
+  const handleRegenerateOtp = async () => {
+    if (window.ghostbrain?.generatePairingSession) {
+      try {
+        const session = await window.ghostbrain.generatePairingSession();
+        if (session) {
+          setOtpCode(session.userCode);
+          setCountdownSec(300);
+          return;
+        }
+      } catch {}
+    }
     const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
     const nums = '23456789';
     const randPart1 = Array.from({ length: 4 }, () => nums[Math.floor(Math.random() * nums.length)]).join('');
@@ -408,7 +444,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setTimeout(() => setCopiedOtp(false), 2000);
   };
 
-  const handleDisconnectDevice = (id: string) => {
+  const handleDisconnectDevice = async (id: string) => {
+    if (window.ghostbrain?.revokePairedDevice) {
+      try {
+        await window.ghostbrain.revokePairedDevice(id);
+      } catch (err) {
+        console.error('Failed to revoke device via IPC:', err);
+      }
+    }
     setConnectedDevices((prev) => prev.filter((d) => d.id !== id));
   };
 

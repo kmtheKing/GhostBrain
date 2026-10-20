@@ -3,7 +3,7 @@ import { ipcMain, dialog, BrowserWindow } from 'electron';
 import { getDatabase } from './db/index.js';
 import { hybridSearch } from './db/search.js';
 import { getPowerMode, setPowerMode, isIndexingCurrentlyPaused } from './tray.js';
-import { buildRagPrompt, parseCitations, OllamaProvider, type ChatMessage } from '@ghostbrain/core';
+import { buildRagPrompt, parseCitations, OllamaProvider, generatePairingCode, generateDeviceIdentity, computeDeviceFingerprint, type ChatMessage } from '@ghostbrain/core';
 import type {
   WatchedFolder,
   IndexStatus,
@@ -13,7 +13,9 @@ import type {
   SearchHit,
   ChatAskPayload,
   ChatAskResponse,
-  SystemTelemetry
+  SystemTelemetry,
+  PairedDeviceRecord,
+  PairingSessionInfo
 } from '@ghostbrain/shared-types';
 
 import { FolderWatcherManager } from './indexer/watcher.js';
@@ -281,6 +283,95 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
     } catch {}
     return { isOnline: false, models: [] };
   }
+
+
+  // Memoized desktop device identity
+  let desktopIdentity: any = null;
+  function getDesktopIdentity() {
+    if (!desktopIdentity) {
+      try {
+        const row = db.prepare("SELECT value_json FROM settings WHERE key = 'desktop_identity'").get() as any;
+        if (row && row.value_json) {
+          desktopIdentity = JSON.parse(row.value_json);
+        } else {
+          const generated = generateDeviceIdentity();
+          desktopIdentity = {
+            fingerprint: generated.fingerprint,
+            ed25519PublicKeyHex: Buffer.from(generated.ed25519PublicKey).toString('hex'),
+            x25519PublicKeyHex: Buffer.from(generated.x25519PublicKey).toString('hex')
+          };
+          db.prepare("INSERT OR REPLACE INTO settings (key, value_json, updated_at) VALUES ('desktop_identity', ?, ?)").run(
+            JSON.stringify(desktopIdentity),
+            Date.now()
+          );
+        }
+      } catch {
+        desktopIdentity = { fingerprint: 'GB-LOCAL-NODE-1049' };
+      }
+    }
+    return desktopIdentity;
+  }
+
+  // Device Pairing & RFC 8628 Sessions
+  ipcMain.handle('devices:generatePairing', (): PairingSessionInfo => {
+    const session = generatePairingCode(300);
+    const identity = getDesktopIdentity();
+
+    try {
+      db.prepare(`
+        INSERT OR REPLACE INTO pairing_sessions (user_code, device_code_hash, fingerprint, expires_at, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(session.userCode, session.deviceCodeHash, identity.fingerprint, session.expiresAt, Date.now());
+    } catch (err) {
+      console.warn('[IPC] Failed to persist pairing session:', err);
+    }
+
+    const qrPayload = `ghostbrain://pair?code=${session.userCode}&fp=${identity.fingerprint}&host=https://192.168.1.40:8443`;
+
+    return {
+      userCode: session.userCode,
+      qrPayload,
+      expiresInSec: 300,
+      fingerprint: identity.fingerprint
+    };
+  });
+
+  ipcMain.handle('devices:list', (): PairedDeviceRecord[] => {
+    try {
+      const rows = db.prepare(`
+        SELECT id, name, kind, fingerprint, connection as connectionType, ip, permissions, status, last_ping_at as lastPingAt, created_at as createdAt
+        FROM paired_devices
+        WHERE status != 'revoked'
+        ORDER BY created_at DESC
+      `).all() as any[];
+
+      return rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        kind: r.kind || 'mobile',
+        fingerprint: r.fingerprint,
+        connectionType: r.connectionType || 'Direct Wi-Fi P2P',
+        ip: r.ip || '192.168.1.42',
+        permissions: r.permissions || 'Full Query + Clip',
+        status: r.status || 'active',
+        lastPingAt: r.lastPingAt,
+        createdAt: r.createdAt
+      }));
+    } catch (err) {
+      console.error('[IPC] Failed to query paired devices:', err);
+      return [];
+    }
+  });
+
+  ipcMain.handle('devices:revoke', (_event, deviceId: string): boolean => {
+    try {
+      db.prepare("UPDATE paired_devices SET status = 'revoked' WHERE id = ?").run(deviceId);
+      return true;
+    } catch (err) {
+      console.error('[IPC] Failed to revoke device:', err);
+      return false;
+    }
+  });
 
   // System Telemetry & Hardware Info
   ipcMain.handle('system:telemetry', async (): Promise<SystemTelemetry> => {

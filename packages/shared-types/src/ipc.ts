@@ -77,6 +77,26 @@ export interface LicenseStatus {
   offlineGraceRemainingDays?: number;
 }
 
+export interface PairedDeviceRecord {
+  id: string;
+  name: string;
+  kind: 'mobile' | 'tablet' | 'laptop';
+  fingerprint: string;
+  connectionType: string;
+  ip?: string;
+  permissions: string;
+  status: 'active' | 'syncing' | 'idle' | 'revoked';
+  lastPingAt?: number;
+  createdAt: number;
+}
+
+export interface PairingSessionInfo {
+  userCode: string;
+  qrPayload: string;
+  expiresInSec: number;
+  fingerprint: string;
+}
+
 export interface SystemTelemetry {
   cpuLoad: number;
   cpuCores: number;
@@ -123,6 +143,11 @@ export interface GhostBrainApi {
   // Licensing
   getLicenseStatus: () => Promise<LicenseStatus>;
   activateLicense: (key: string) => Promise<boolean>;
+
+  // Device Pairing & Keychain
+  generatePairingSession: () => Promise<PairingSessionInfo>;
+  listPairedDevices: () => Promise<PairedDeviceRecord[]>;
+  revokePairedDevice: (deviceId: string) => Promise<boolean>;
 
   // System Telemetry & Native Dialogs
   getSystemTelemetry: () => Promise<SystemTelemetry>;
