@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ShieldCheck, 
   Zap, 
@@ -19,7 +19,11 @@ import {
   Check, 
   ChevronRight,
   Flame,
-  Radio
+  Radio,
+  Play,
+  Pause,
+  Maximize2,
+  Sparkles
 } from 'lucide-react';
 
 interface LandingPageProps {
@@ -34,12 +38,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   onOpenConnectModal
 }) => {
   const [showcaseTab, setShowcaseTab] = useState<'search' | 'llm' | 'eco'>('search');
+  const [videoMode, setVideoMode] = useState<'core' | 'workstation'>('core');
+  const [isPlaying, setIsPlaying] = useState(true);
 
   return (
-    <div className="relative z-10 w-full max-w-6xl mx-auto px-4 py-12 sm:py-20 space-y-28 select-none">
+    <div className="relative z-10 w-full max-w-6xl mx-auto px-4 py-8 sm:py-16 space-y-24 select-none">
       
       {/* 1. HERO SECTION */}
-      <section className="text-center space-y-6 pt-6 sm:pt-12">
+      <section className="text-center space-y-6 pt-4 sm:pt-8">
         <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-[#e5b364]/10 border border-[#e5b364]/30 text-[#e5b364] text-xs font-mono tracking-widest uppercase">
           <ShieldCheck className="w-3.5 h-3.5" />
           <span>The Sovereign Local Intelligence Suite</span>
@@ -83,7 +89,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
 
         {/* Trust Badges */}
-        <div className="pt-8 flex flex-wrap items-center justify-center gap-6 text-[11px] font-mono text-[#8e887d]">
+        <div className="pt-6 flex flex-wrap items-center justify-center gap-6 text-[11px] font-mono text-[#8e887d]">
           <span className="flex items-center space-x-1.5">
             <CheckCircle2 className="w-3.5 h-3.5 text-[#e5b364]" />
             <span>100% Offline &amp; Air-Gap Capable</span>
@@ -99,7 +105,79 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
       </section>
 
-      {/* 2. THE PROBLEM VS THE SOLUTION */}
+      {/* 2. CINEMATIC ANIMATED LOOP VIDEO SHOWCASE */}
+      <section className="relative rounded-3xl overflow-hidden border border-[#e5b364]/30 bg-[#0d0d12]/90 shadow-2xl shadow-[#e5b364]/10 backdrop-blur-2xl p-4 sm:p-6 space-y-4">
+        {/* Top Control Bar */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="font-mono text-xs uppercase font-bold text-[#f0ebe1] tracking-wider">
+              {videoMode === 'core' ? 'Holographic Neural Engine (Live Render)' : 'Desktop Workstation Dashboard (Active Session)'}
+            </span>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setVideoMode('core')}
+              className={`px-3 py-1 rounded-lg text-xs font-mono font-medium transition cursor-pointer ${
+                videoMode === 'core'
+                  ? 'bg-[#e5b364] text-[#060608] font-bold'
+                  : 'bg-white/5 text-[#8e887d] hover:text-[#f0ebe1]'
+              }`}
+            >
+              Neural Core
+            </button>
+            <button
+              onClick={() => setVideoMode('workstation')}
+              className={`px-3 py-1 rounded-lg text-xs font-mono font-medium transition cursor-pointer ${
+                videoMode === 'workstation'
+                  ? 'bg-[#e5b364] text-[#060608] font-bold'
+                  : 'bg-white/5 text-[#8e887d] hover:text-[#f0ebe1]'
+              }`}
+            >
+              Desktop Workstation
+            </button>
+            <button
+              onClick={() => setIsPlaying(!isPlaying)}
+              className="p-1.5 rounded-lg bg-white/5 text-[#8e887d] hover:text-[#f0ebe1] transition cursor-pointer"
+              title={isPlaying ? 'Pause Loop' : 'Play Loop'}
+            >
+              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Video / Visual Container */}
+        <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-black/80 border border-white/10 group">
+          <img
+            src={videoMode === 'core' ? '/assets/hero_neural_core.jpg' : '/assets/workstation_demo.jpg'}
+            alt="GhostBrain Cinematic Showcase"
+            className={`w-full h-full object-cover transition-transform duration-1000 ${
+              isPlaying ? 'scale-105 filter brightness-105' : 'scale-100'
+            }`}
+          />
+
+          {/* Holographic Scanline Overlay */}
+          <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-transparent via-[#e5b364]/5 to-transparent bg-[length:100%_4px] opacity-40 animate-pulse" />
+
+          {/* Floating HUD Telemetry Overlay */}
+          <div className="absolute bottom-4 left-4 right-4 flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-[#060608]/85 backdrop-blur-md border border-white/10 text-[11px] font-mono text-[#8e887d]">
+            <div className="flex items-center space-x-3">
+              <span className="flex items-center space-x-1 text-[#e5b364] font-bold">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Zero-Cloud Compute</span>
+              </span>
+              <span>Host CPU: 38°C</span>
+              <span>VRAM: 0 MB (Offline Isolation)</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <span className="text-emerald-400 font-bold">● Mathematical Proof: Ed25519 Verified</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 3. THE PROBLEM VS THE SOLUTION */}
       <section className="space-y-8">
         <div className="text-center space-y-2">
           <span className="text-xs font-mono uppercase tracking-widest text-[#e5b364]">The Paradigm Shift</span>
@@ -113,7 +191,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Cloud AI Trap Card */}
-          <div className="p-6 rounded-3xl bg-[#0d0d12]/60 border border-red-500/20 space-y-5">
+          <div className="p-6 rounded-3xl bg-[#0d0d12]/90 backdrop-blur-xl border border-red-500/25 space-y-5">
             <div className="flex items-center justify-between pb-3 border-b border-white/5">
               <span className="text-xs font-mono font-bold text-red-400 uppercase tracking-wider">
                 The SaaS Cloud AI Trap
@@ -142,7 +220,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
 
           {/* GhostBrain Sovereign Card */}
-          <div className="p-6 rounded-3xl bg-[#0d0d12] border border-[#e5b364]/40 shadow-xl shadow-[#e5b364]/5 space-y-5">
+          <div className="p-6 rounded-3xl bg-[#0d0d12]/95 backdrop-blur-xl border border-[#e5b364]/40 shadow-xl shadow-[#e5b364]/5 space-y-5">
             <div className="flex items-center justify-between pb-3 border-b border-white/5">
               <span className="text-xs font-mono font-bold text-[#e5b364] uppercase tracking-wider">
                 The GhostBrain Sovereign Engine
@@ -172,7 +250,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
       </section>
 
-      {/* 3. INTERACTIVE PRODUCT SHOWCASE */}
+      {/* 4. PRODUCT SHOWCASE TABS */}
       <section className="space-y-8">
         <div className="text-center space-y-2">
           <span className="text-xs font-mono uppercase tracking-widest text-[#e5b364]">Product Architecture</span>
@@ -186,7 +264,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
         {/* Tab Buttons */}
         <div className="flex justify-center">
-          <div className="p-1 rounded-2xl bg-[#0d0d12] border border-white/10 flex flex-wrap gap-1 text-xs font-mono">
+          <div className="p-1 rounded-2xl bg-[#0d0d12]/90 border border-white/10 flex flex-wrap gap-1 text-xs font-mono">
             <button
               onClick={() => setShowcaseTab('search')}
               className={`px-4 py-2.5 rounded-xl font-medium transition cursor-pointer flex items-center space-x-2 ${
@@ -224,7 +302,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
 
         {/* Tab Content Cards */}
-        <div className="p-8 rounded-3xl bg-[#0d0d12] border border-[#e5b364]/20 shadow-2xl space-y-6">
+        <div className="p-8 rounded-3xl bg-[#0d0d12]/95 backdrop-blur-2xl border border-[#e5b364]/25 shadow-2xl space-y-6">
           {showcaseTab === 'search' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
               <div className="space-y-4">
@@ -339,57 +417,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
       </section>
 
-      {/* 4. PROFESSIONAL USE CASES */}
-      <section className="space-y-8">
-        <div className="text-center space-y-2">
-          <span className="text-xs font-mono uppercase tracking-widest text-[#e5b364]">Enterprise Applications</span>
-          <h2 className="text-3xl sm:text-4xl font-serif text-[#f0ebe1] font-bold">
-            Built for Regulated &amp; High-Stakes Industries
-          </h2>
-          <p className="text-xs sm:text-sm text-[#8e887d] max-w-xl mx-auto">
-            From attorney-client privilege to clinical charts, discover why top firms refuse to send internal data to cloud LLMs.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Legal */}
-          <div className="p-5 rounded-2xl bg-[#0d0d12] border border-white/10 hover:border-[#e5b364]/40 transition space-y-3">
-            <Scale className="w-6 h-6 text-[#e5b364]" />
-            <h4 className="text-base font-serif font-bold text-[#f0ebe1]">Legal &amp; M&amp;A Discovery</h4>
-            <p className="text-xs text-[#8e887d] leading-relaxed">
-              Scan thousands of merger contracts, NDAs, and deposition transcripts with total attorney-client confidentiality.
-            </p>
-          </div>
-
-          {/* Medical */}
-          <div className="p-5 rounded-2xl bg-[#0d0d12] border border-white/10 hover:border-[#e5b364]/40 transition space-y-3">
-            <Stethoscope className="w-6 h-6 text-[#e5b364]" />
-            <h4 className="text-base font-serif font-bold text-[#f0ebe1]">Clinics &amp; Healthcare</h4>
-            <p className="text-xs text-[#8e887d] leading-relaxed">
-              100% HIPAA &amp; GDPR compliant. Query patient histories and radiology reports without cloud exposure.
-            </p>
-          </div>
-
-          {/* Engineering */}
-          <div className="p-5 rounded-2xl bg-[#0d0d12] border border-white/10 hover:border-[#e5b364]/40 transition space-y-3">
-            <Code2 className="w-6 h-6 text-[#e5b364]" />
-            <h4 className="text-base font-serif font-bold text-[#f0ebe1]">Software &amp; Deep Tech</h4>
-            <p className="text-xs text-[#8e887d] leading-relaxed">
-              Index proprietary codebases, confidential RFCs, and API documentation with sub-second keyword and semantic lookups.
-            </p>
-          </div>
-
-          {/* Finance */}
-          <div className="p-5 rounded-2xl bg-[#0d0d12] border border-white/10 hover:border-[#e5b364]/40 transition space-y-3">
-            <DollarSign className="w-6 h-6 text-[#e5b364]" />
-            <h4 className="text-base font-serif font-bold text-[#f0ebe1]">Finance &amp; Auditing</h4>
-            <p className="text-xs text-[#8e887d] leading-relaxed">
-              Audit balance sheets, tax schedules, and internal ledgers safely without risking sensitive corporate disclosures.
-            </p>
-          </div>
-        </div>
-      </section>
-
       {/* 5. COMMERCIAL PRICING MATRIX */}
       <section className="space-y-8" id="pricing">
         <div className="text-center space-y-2">
@@ -404,7 +431,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Plan 1: Personal */}
-          <div className="p-6 rounded-3xl bg-[#0d0d12] border border-white/10 flex flex-col justify-between space-y-6">
+          <div className="p-6 rounded-3xl bg-[#0d0d12]/90 backdrop-blur-xl border border-white/10 flex flex-col justify-between space-y-6">
             <div className="space-y-4">
               <div className="space-y-1">
                 <span className="text-xs font-mono text-[#8e887d] uppercase font-bold">Personal Edition</span>
@@ -449,7 +476,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
 
           {/* Plan 2: Cloud+ Remote (Featured) */}
-          <div className="p-6 rounded-3xl bg-[#0d0d12] border-2 border-[#e5b364] shadow-2xl shadow-[#e5b364]/10 flex flex-col justify-between space-y-6 relative">
+          <div className="p-6 rounded-3xl bg-[#0d0d12]/95 backdrop-blur-xl border-2 border-[#e5b364] shadow-2xl shadow-[#e5b364]/10 flex flex-col justify-between space-y-6 relative">
             <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-[#e5b364] text-[#060608] font-mono text-[10px] font-bold uppercase tracking-wider">
               Most Popular
             </div>
@@ -498,7 +525,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
 
           {/* Plan 3: Clinic & Enterprise */}
-          <div className="p-6 rounded-3xl bg-[#0d0d12] border border-white/10 flex flex-col justify-between space-y-6">
+          <div className="p-6 rounded-3xl bg-[#0d0d12]/90 backdrop-blur-xl border border-white/10 flex flex-col justify-between space-y-6">
             <div className="space-y-4">
               <div className="space-y-1">
                 <span className="text-xs font-mono text-[#8e887d] uppercase font-bold">Enterprise</span>
@@ -545,7 +572,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       </section>
 
       {/* 6. DOWNLOAD / FINAL CTA */}
-      <section className="p-8 sm:p-12 rounded-3xl bg-[#0d0d12] border border-[#e5b364]/30 text-center space-y-6 shadow-2xl shadow-[#e5b364]/10" id="download">
+      <section className="p-8 sm:p-12 rounded-3xl bg-[#0d0d12]/95 backdrop-blur-2xl border border-[#e5b364]/30 text-center space-y-6 shadow-2xl shadow-[#e5b364]/10" id="download">
         <h2 className="text-3xl sm:text-5xl font-serif font-bold text-[#f0ebe1] max-w-2xl mx-auto">
           Take Back Your Cognitive Sovereignty Today.
         </h2>

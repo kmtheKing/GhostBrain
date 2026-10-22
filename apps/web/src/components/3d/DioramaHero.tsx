@@ -8,9 +8,9 @@ export const DioramaHero: React.FC = () => {
     const container = containerRef.current;
     if (!container) return;
 
-    // 1. Scene, Camera, Renderer
+    // 1. Scene & Camera Setup
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x060608, 0.035);
+    scene.fog = new THREE.FogExp2(0x060608, 0.04);
 
     const camera = new THREE.PerspectiveCamera(
       45,
@@ -18,7 +18,7 @@ export const DioramaHero: React.FC = () => {
       0.1,
       100
     );
-    camera.position.set(0, 0, 7.5);
+    camera.position.set(0, 0, 7.2);
 
     const renderer = new THREE.WebGLRenderer({
       alpha: true,
@@ -28,90 +28,139 @@ export const DioramaHero: React.FC = () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.15;
+    renderer.toneMappingExposure = 1.25;
     container.appendChild(renderer.domElement);
 
-    // 2. Lighting Setup (Motivated 3-Point with Cursor Spotlight)
-    const ambientLight = new THREE.AmbientLight(0x1a1815, 1.2);
+    // 2. Lighting Setup
+    const ambientLight = new THREE.AmbientLight(0x1a150e, 1.4);
     scene.add(ambientLight);
 
-    const cursorSpot = new THREE.SpotLight(0xffdf9e, 3.5);
+    const cursorSpot = new THREE.SpotLight(0xffe099, 4.2);
     cursorSpot.position.set(0, 3, 6);
     cursorSpot.angle = Math.PI / 4;
     cursorSpot.penumbra = 0.8;
     scene.add(cursorSpot);
 
-    const rimLight = new THREE.DirectionalLight(0xe5b364, 2.0);
-    rimLight.position.set(-5, 4, -4);
+    const rimLight = new THREE.DirectionalLight(0xe5b364, 2.5);
+    rimLight.position.set(-6, 5, -4);
     scene.add(rimLight);
 
-    const fillLight = new THREE.DirectionalLight(0x403525, 1.0);
-    fillLight.position.set(5, -3, 2);
+    const fillLight = new THREE.DirectionalLight(0x4a3a1f, 1.2);
+    fillLight.position.set(6, -4, 3);
     scene.add(fillLight);
 
-    // 3. Central Cryptographic Neural Vault (Icosahedron Crystal)
-    const crystalGeo = new THREE.IcosahedronGeometry(1.6, 0);
-    const crystalMat = new THREE.MeshStandardMaterial({
-      color: 0x14120e,
-      roughness: 0.18,
-      metalness: 0.92,
-      emissive: 0x241a0b,
-      emissiveIntensity: 0.35,
-      wireframe: false,
-    });
-    const crystal = new THREE.Mesh(crystalGeo, crystalMat);
-    scene.add(crystal);
+    // 3. PROCEDURAL 3D NEURAL BRAIN (Two Symmetrical Hemispheres)
+    const brainGroup = new THREE.Group();
+    scene.add(brainGroup);
 
-    // Wireframe Cage Layer
-    const wireMat = new THREE.MeshBasicMaterial({
-      color: 0xe5b364,
-      wireframe: true,
+    const pointsPerHemisphere = 650;
+    const totalPoints = pointsPerHemisphere * 2;
+    const positions = new Float32Array(totalPoints * 3);
+    const colors = new Float32Array(totalPoints * 3);
+
+    const goldColor = new THREE.Color(0xe5b364);
+    const brightColor = new THREE.Color(0xfff5dd);
+    const bronzeColor = new THREE.Color(0x8a632a);
+
+    let idx = 0;
+    // Generate Left (-1) and Right (+1) Hemispheres
+    [-1, 1].forEach((side) => {
+      for (let i = 0; i < pointsPerHemisphere; i++) {
+        const u = Math.random() * Math.PI;
+        const v = Math.random() * Math.PI * 2;
+
+        // Organic brain lobe deformation equations
+        const rBase = 1.35;
+        const folds = 0.22 * Math.sin(5 * u) * Math.cos(6 * v) + 0.12 * Math.sin(9 * u);
+        const r = rBase + folds;
+
+        const x = side * (0.42 + r * Math.sin(u) * Math.cos(v) * 0.85);
+        const y = r * Math.sin(u) * Math.sin(v) * 1.05;
+        const z = r * Math.cos(u) * 1.25;
+
+        positions[idx * 3] = x;
+        positions[idx * 3 + 1] = y;
+        positions[idx * 3 + 2] = z;
+
+        // Color variation for biological / cryptographic depth
+        const mix = Math.random();
+        const col = mix > 0.7 ? brightColor : mix > 0.3 ? goldColor : bronzeColor;
+        colors[idx * 3] = col.r;
+        colors[idx * 3 + 1] = col.g;
+        colors[idx * 3 + 2] = col.b;
+
+        idx++;
+      }
+    });
+
+    const brainGeo = new THREE.BufferGeometry();
+    brainGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    brainGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    const brainMat = new THREE.PointsMaterial({
+      size: 0.055,
+      vertexColors: true,
       transparent: true,
-      opacity: 0.35
-    });
-    const wireCage = new THREE.Mesh(new THREE.IcosahedronGeometry(1.62, 0), wireMat);
-    scene.add(wireCage);
-
-    // 4. Dual Orbital Rings
-    const ringGeo1 = new THREE.TorusGeometry(2.3, 0.025, 16, 100);
-    const ringMat1 = new THREE.MeshStandardMaterial({
-      color: 0xe5b364,
-      metalness: 0.9,
-      roughness: 0.2,
-      emissive: 0x6e4e1a,
-      emissiveIntensity: 0.2
-    });
-    const ring1 = new THREE.Mesh(ringGeo1, ringMat1);
-    ring1.rotation.x = Math.PI / 3;
-    scene.add(ring1);
-
-    const ringGeo2 = new THREE.TorusGeometry(2.8, 0.018, 16, 100);
-    const ring2 = new THREE.Mesh(ringGeo2, ringMat1);
-    ring2.rotation.y = Math.PI / 4;
-    ring2.rotation.z = Math.PI / 6;
-    scene.add(ring2);
-
-    // 5. Floating Encrypted Data Nodes (Particles)
-    const particleCount = 280;
-    const posArray = new Float32Array(particleCount * 3);
-    for (let i = 0; i < particleCount * 3; i += 3) {
-      posArray[i] = (Math.random() - 0.5) * 12;
-      posArray[i + 1] = (Math.random() - 0.5) * 8;
-      posArray[i + 2] = (Math.random() - 0.5) * 8;
-    }
-    const particleGeo = new THREE.BufferGeometry();
-    particleGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
-    const particleMat = new THREE.PointsMaterial({
-      size: 0.04,
-      color: 0xe5b364,
-      transparent: true,
-      opacity: 0.7,
+      opacity: 0.88,
       blending: THREE.AdditiveBlending
     });
-    const particles = new THREE.Points(particleGeo, particleMat);
-    scene.add(particles);
 
-    // 6. Interaction & Mouse Tracking
+    const brainPoints = new THREE.Points(brainGeo, brainMat);
+    brainGroup.add(brainPoints);
+
+    // 4. Central Glowing Synaptic Core (Nucleus)
+    const nucleusGeo = new THREE.SphereGeometry(0.7, 32, 32);
+    const nucleusMat = new THREE.MeshStandardMaterial({
+      color: 0x18120a,
+      emissive: 0xe5b364,
+      emissiveIntensity: 0.45,
+      roughness: 0.2,
+      metalness: 0.9,
+      wireframe: true
+    });
+    const nucleus = new THREE.Mesh(nucleusGeo, nucleusMat);
+    brainGroup.add(nucleus);
+
+    // 5. Dual Orbital Cryptographic Rings
+    const ringGeo1 = new THREE.TorusGeometry(2.35, 0.02, 16, 120);
+    const ringMat = new THREE.MeshStandardMaterial({
+      color: 0xe5b364,
+      metalness: 0.95,
+      roughness: 0.15,
+      emissive: 0x5a3f15,
+      emissiveIntensity: 0.3
+    });
+    const ring1 = new THREE.Mesh(ringGeo1, ringMat);
+    ring1.rotation.x = Math.PI / 3;
+    brainGroup.add(ring1);
+
+    const ringGeo2 = new THREE.TorusGeometry(2.85, 0.015, 16, 120);
+    const ring2 = new THREE.Mesh(ringGeo2, ringMat);
+    ring2.rotation.y = Math.PI / 4;
+    ring2.rotation.z = Math.PI / 6;
+    brainGroup.add(ring2);
+
+    // 6. Floating Synaptic Light Pulses
+    const pulseCount = 180;
+    const pulsePositions = new Float32Array(pulseCount * 3);
+    for (let i = 0; i < pulseCount * 3; i += 3) {
+      pulsePositions[i] = (Math.random() - 0.5) * 10;
+      pulsePositions[i + 1] = (Math.random() - 0.5) * 7;
+      pulsePositions[i + 2] = (Math.random() - 0.5) * 7;
+    }
+    const pulseGeo = new THREE.BufferGeometry();
+    pulseGeo.setAttribute('position', new THREE.BufferAttribute(pulsePositions, 3));
+    const pulseMat = new THREE.PointsMaterial({
+      size: 0.035,
+      color: 0xffd985,
+      transparent: true,
+      opacity: 0.65,
+      blending: THREE.AdditiveBlending
+    });
+    const pulses = new THREE.Points(pulseGeo, pulseMat);
+    scene.add(pulses);
+
+    // 7. Cursor Interaction Tracking
     let targetX = 0;
     let targetY = 0;
     let windowHalfX = window.innerWidth / 2;
@@ -127,10 +176,9 @@ export const DioramaHero: React.FC = () => {
         clientX = e.clientX;
         clientY = e.clientY;
       }
-      targetX = (clientX - windowHalfX) * 0.002;
-      targetY = (clientY - windowHalfY) * 0.002;
+      targetX = (clientX - windowHalfX) * 0.0018;
+      targetY = (clientY - windowHalfY) * 0.0018;
 
-      // Update cursor light position
       cursorSpot.position.x = (clientX / window.innerWidth) * 8 - 4;
       cursorSpot.position.y = -(clientY / window.innerHeight) * 6 + 3;
     };
@@ -147,31 +195,33 @@ export const DioramaHero: React.FC = () => {
     };
     window.addEventListener('resize', onResize);
 
-    // 7. Animation Loop
+    // 8. Animation Loop
     let animId: number;
-    let clock = new THREE.Clock();
+    const clock = new THREE.Clock();
 
     const animate = () => {
       animId = requestAnimationFrame(animate);
       const elapsed = clock.getElapsedTime();
 
       // Smooth camera slerp towards mouse
-      camera.position.x += (targetX * 3.5 - camera.position.x) * 0.04;
-      camera.position.y += (-targetY * 2.5 - camera.position.y) * 0.04;
+      camera.position.x += (targetX * 3.0 - camera.position.x) * 0.035;
+      camera.position.y += (-targetY * 2.0 - camera.position.y) * 0.035;
       camera.lookAt(0, 0, 0);
 
-      // Rotate vault crystal
-      crystal.rotation.x = elapsed * 0.22;
-      crystal.rotation.y = elapsed * 0.35;
-      wireCage.rotation.x = elapsed * 0.22;
-      wireCage.rotation.y = elapsed * 0.35;
+      // Organic pulsating breathing of the neural brain
+      const breath = 1.0 + Math.sin(elapsed * 1.8) * 0.04;
+      brainPoints.scale.set(breath, breath, breath);
+
+      // Rotate neural brain
+      brainGroup.rotation.y = elapsed * 0.16;
+      brainGroup.rotation.x = Math.sin(elapsed * 0.4) * 0.08;
 
       // Rotate orbital rings
-      ring1.rotation.z = elapsed * 0.18;
-      ring2.rotation.x = elapsed * -0.15;
+      ring1.rotation.z = elapsed * 0.22;
+      ring2.rotation.x = elapsed * -0.18;
 
-      // Float particles
-      particles.rotation.y = elapsed * 0.06;
+      // Animate ambient pulses
+      pulses.rotation.y = elapsed * 0.04;
 
       renderer.render(scene, camera);
     };
@@ -187,12 +237,15 @@ export const DioramaHero: React.FC = () => {
         container.removeChild(renderer.domElement);
       }
       renderer.dispose();
-      crystalGeo.dispose();
-      crystalMat.dispose();
+      brainGeo.dispose();
+      brainMat.dispose();
+      nucleusGeo.dispose();
+      nucleusMat.dispose();
       ringGeo1.dispose();
       ringGeo2.dispose();
-      particleGeo.dispose();
-      particleMat.dispose();
+      ringMat.dispose();
+      pulseGeo.dispose();
+      pulseMat.dispose();
     };
   }, []);
 
