@@ -1,99 +1,104 @@
 import React, { useState } from 'react';
-import { DioramaHero } from './components/3d/DioramaHero';
 import { LandingPage } from './components/landing/LandingPage';
 import { DemoSandbox } from './components/demo/DemoSandbox';
 import { MobileRemote } from './components/remote/MobileRemote';
 import { ConnectModal } from './components/landing/ConnectModal';
-import { Shield, Zap, Smartphone, Sparkles, Globe, Download } from 'lucide-react';
+import { Shield, Zap, Smartphone, Download, Terminal, ChevronRight } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'landing' | 'demo' | 'remote'>('landing');
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-[#060608] text-[#f0ebe1] relative overflow-x-hidden selection:bg-[#e5b364] selection:text-[#060608]">
-      {/* 1. Ambient Background Noise Overlay */}
-      <div className="noise-overlay" />
+    <div className="min-h-screen bg-[#08080a] text-[#f4f4f6] relative overflow-x-hidden selection:bg-[#e5b364] selection:text-[#08080a] font-sans">
+      
+      {/* Subtle Ambient Background Gradient */}
+      <div className="fixed inset-0 pointer-events-none z-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(229,179,100,0.08),rgba(255,255,255,0))]" />
 
-      {/* 2. Fixed 3D Diorama WebGL Canvas (Active across all tabs with variable camera depth) */}
-      <DioramaHero />
-
-      {/* 3. Sleek Luxury Navigation Header */}
-      <header className="sticky top-0 z-40 w-full backdrop-blur-xl bg-[#060608]/70 border-b border-white/5 transition-all">
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+      {/* Top Navigation Bar - Linear / Raycast style */}
+      <header className="sticky top-0 z-40 w-full backdrop-blur-xl bg-[#08080a]/80 border-b border-white/[0.08] transition-all">
+        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
+          
           {/* Brand Logo */}
           <div
             onClick={() => setActiveTab('landing')}
             className="flex items-center space-x-2.5 cursor-pointer group"
           >
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#e5b364] to-[#78541e] p-[1px] shadow-lg shadow-[#e5b364]/10 group-hover:shadow-[#e5b364]/30 transition">
-              <div className="w-full h-full rounded-xl bg-[#0d0d12] flex items-center justify-center">
-                <Shield className="w-4 h-4 text-[#e5b364]" />
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#e5b364] to-[#78541e] p-[1px] shadow-sm">
+              <div className="w-full h-full rounded-lg bg-[#0d0d12] flex items-center justify-center">
+                <Shield className="w-3.5 h-3.5 text-[#e5b364]" />
               </div>
             </div>
-            <div>
-              <span className="font-serif font-bold text-base tracking-wider text-[#f0ebe1] group-hover:text-[#e5b364] transition">
-                GHOSTBRAIN
+            <div className="flex items-baseline space-x-2">
+              <span className="font-bold text-sm tracking-tight text-[#f4f4f6] group-hover:text-[#e5b364] transition">
+                GhostBrain
               </span>
-              <span className="text-[9px] font-mono text-[#8e887d] block -mt-1 tracking-widest uppercase">
-                100% Sovereign AI
+              <span className="text-[10px] font-mono text-zinc-500 hidden sm:inline px-1.5 py-0.5 rounded bg-white/5 border border-white/5">
+                v0.0.1
               </span>
             </div>
           </div>
 
-          {/* Navigation Tabs */}
-          <nav className="flex items-center p-1 rounded-xl bg-[#0d0d12] border border-white/10 text-xs font-mono">
+          {/* Navigation Segmented Controls */}
+          <nav className="flex items-center p-1 rounded-xl bg-zinc-900/80 border border-white/10 text-xs font-mono">
             <button
               onClick={() => setActiveTab('landing')}
               className={`px-3 py-1.5 rounded-lg font-medium transition cursor-pointer flex items-center space-x-1.5 ${
                 activeTab === 'landing'
-                  ? 'bg-[#e5b364] text-[#060608] font-bold shadow-xs'
-                  : 'text-[#8e887d] hover:text-[#f0ebe1]'
+                  ? 'bg-white/10 text-white shadow-xs font-semibold'
+                  : 'text-zinc-400 hover:text-white'
               }`}
             >
-              <Globe className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">3D Overview</span>
+              <span>Product</span>
             </button>
 
             <button
               onClick={() => setActiveTab('demo')}
               className={`px-3 py-1.5 rounded-lg font-medium transition cursor-pointer flex items-center space-x-1.5 ${
                 activeTab === 'demo'
-                  ? 'bg-[#e5b364] text-[#060608] font-bold shadow-xs'
-                  : 'text-[#8e887d] hover:text-[#f0ebe1]'
+                  ? 'bg-white/10 text-white shadow-xs font-semibold'
+                  : 'text-zinc-400 hover:text-white'
               }`}
             >
-              <Zap className="w-3.5 h-3.5" />
-              <span>Speed Demo</span>
+              <Zap className="w-3 h-3 text-[#e5b364]" />
+              <span>Speed Test</span>
             </button>
 
             <button
               onClick={() => setActiveTab('remote')}
               className={`px-3 py-1.5 rounded-lg font-medium transition cursor-pointer flex items-center space-x-1.5 ${
                 activeTab === 'remote'
-                  ? 'bg-[#e5b364] text-[#060608] font-bold shadow-xs'
-                  : 'text-[#8e887d] hover:text-[#f0ebe1]'
+                  ? 'bg-white/10 text-white shadow-xs font-semibold'
+                  : 'text-zinc-400 hover:text-white'
               }`}
             >
-              <Smartphone className="w-3.5 h-3.5" />
+              <Smartphone className="w-3 h-3 text-[#e5b364]" />
               <span>Mobile Remote</span>
             </button>
           </nav>
 
           {/* Right Action CTA */}
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2.5">
             <button
               onClick={() => setIsConnectModalOpen(true)}
-              className="px-3.5 py-1.5 rounded-xl bg-[#e5b364] hover:bg-[#d4a253] text-[#060608] text-xs font-mono font-bold transition shadow-md shadow-[#e5b364]/20 cursor-pointer hidden md:flex items-center space-x-1.5"
+              className="px-3 py-1.5 rounded-lg border border-white/10 hover:border-[#e5b364]/40 bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white text-xs font-mono transition cursor-pointer hidden sm:flex items-center space-x-1.5"
             >
-              <Smartphone className="w-3.5 h-3.5" />
+              <Smartphone className="w-3 h-3 text-[#e5b364]" />
               <span>Pair Mobile</span>
             </button>
+
+            <a
+              href="#download"
+              className="px-3.5 py-1.5 rounded-lg bg-[#e5b364] hover:bg-[#d4a253] text-[#08080a] text-xs font-mono font-bold transition shadow-sm cursor-pointer flex items-center space-x-1"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Download</span>
+            </a>
           </div>
         </div>
       </header>
 
-      {/* 4. Active Main View */}
+      {/* Main View Router */}
       <main className="relative z-10">
         {activeTab === 'landing' && (
           <LandingPage
@@ -110,7 +115,7 @@ export const App: React.FC = () => {
         )}
       </main>
 
-      {/* 5. Mobile Pairing Modal */}
+      {/* Pairing Modal */}
       <ConnectModal
         isOpen={isConnectModalOpen}
         onClose={() => setIsConnectModalOpen(false)}
