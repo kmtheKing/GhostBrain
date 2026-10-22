@@ -9,7 +9,9 @@
     "build:packages": "pnpm --filter @ghostbrain/shared-types build && pnpm --filter @ghostbrain/core build",
     "build": "pnpm build:packages && pnpm --filter @ghostbrain/desktop build",
     "typecheck": "pnpm -r typecheck",
-    "test": "vitest run"
+    "test": "vitest run",
+    "dev:web": "pnpm --filter @ghostbrain/web dev",
+    "build:web": "pnpm --filter @ghostbrain/web build"
   },
   "devDependencies": {
     "typescript": "^5.7.3",
