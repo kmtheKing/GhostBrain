@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   ShieldCheck, 
   Zap, 
@@ -22,8 +22,10 @@ import {
   Radio,
   Play,
   Pause,
-  Maximize2,
-  Sparkles
+  Sparkles,
+  Shield,
+  Layers,
+  Activity
 } from 'lucide-react';
 
 interface LandingPageProps {
@@ -38,146 +40,149 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   onOpenConnectModal
 }) => {
   const [showcaseTab, setShowcaseTab] = useState<'search' | 'llm' | 'eco'>('search');
-  const [videoMode, setVideoMode] = useState<'core' | 'workstation'>('core');
+  const [heroView, setHeroView] = useState<'brain' | 'workstation'>('brain');
   const [isPlaying, setIsPlaying] = useState(true);
 
   return (
-    <div className="relative z-10 w-full max-w-6xl mx-auto px-4 py-8 sm:py-16 space-y-24 select-none">
+    <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-16 space-y-28 select-none">
       
-      {/* 1. HERO SECTION */}
-      <section className="text-center space-y-6 pt-4 sm:pt-8">
-        <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-[#e5b364]/10 border border-[#e5b364]/30 text-[#e5b364] text-xs font-mono tracking-widest uppercase">
-          <ShieldCheck className="w-3.5 h-3.5" />
-          <span>The Sovereign Local Intelligence Suite</span>
-        </div>
+      {/* 1. CINEMATIC 2-COLUMN HERO SECTION */}
+      <section className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center pt-4 sm:pt-10">
+        
+        {/* Left Column: Typography & Conversion Actions */}
+        <div className="lg:col-span-7 space-y-6 text-left">
+          
+          {/* Logo Crest Pill */}
+          <div className="inline-flex items-center space-x-2.5 px-3 py-1.5 rounded-full bg-[#e5b364]/10 border border-[#e5b364]/30 text-[#e5b364] text-xs font-mono tracking-wider">
+            <div className="w-2 h-2 rounded-full bg-[#e5b364] animate-ping" />
+            <Shield className="w-3.5 h-3.5" />
+            <span className="font-bold">GHOSTBRAIN AI</span>
+            <span className="text-[#8e887d]">|</span>
+            <span className="text-[#f0ebe1]">100% Sovereign Local Intelligence</span>
+          </div>
 
-        <h1 className="text-4xl sm:text-6xl md:text-7xl font-serif text-[#f0ebe1] font-bold tracking-tight max-w-4xl mx-auto leading-[1.08]">
-          Your Private AI Second Brain. <br />
-          <span className="text-[#e5b364] italic">100% Local. Zero Cloud Leaks.</span>
-        </h1>
+          {/* Main Title */}
+          <h1 className="text-4xl sm:text-6xl font-serif text-[#f0ebe1] font-bold tracking-tight leading-[1.08]">
+            Your Private AI Second Brain. <br />
+            <span className="text-[#e5b364] italic">100% Local. Zero Cloud Leaks.</span>
+          </h1>
 
-        <p className="text-sm sm:text-base text-[#8e887d] max-w-2xl mx-auto leading-relaxed">
-          Search confidential enterprise documents in under 3 milliseconds. Run open-weights local AI (Gemma, Llama, Qwen) with strict source citations and mirror your desktop wirelessly anywhere in the world.
-        </p>
+          {/* Subtitle */}
+          <p className="text-sm sm:text-base text-[#8e887d] max-w-xl leading-relaxed">
+            Search confidential documents across internal folders in under 3 milliseconds. Run open-weights local models (Gemma, Llama, Qwen) with mathematical citations, and mirror your desktop wirelessly anywhere in the world.
+          </p>
 
-        {/* Hero Actions */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-3">
-          <button
-            onClick={onOpenConnectModal}
-            className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-[#e5b364] hover:bg-[#d4a253] text-[#060608] font-mono text-xs font-bold transition shadow-xl shadow-[#e5b364]/20 cursor-pointer flex items-center justify-center space-x-2"
-          >
-            <Smartphone className="w-4 h-4" />
-            <span>Link Mobile Remote</span>
-            <ChevronRight className="w-4 h-4" />
-          </button>
+          {/* Core Action Buttons */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2">
+            <button
+              onClick={onOpenConnectModal}
+              className="px-6 py-3.5 rounded-xl bg-[#e5b364] hover:bg-[#d4a253] text-[#060608] font-mono text-xs font-bold transition shadow-xl shadow-[#e5b364]/20 cursor-pointer flex items-center justify-center space-x-2"
+            >
+              <Smartphone className="w-4 h-4" />
+              <span>Link Mobile Remote</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
 
-          <button
-            onClick={onOpenDemo}
-            className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-[#f0ebe1] font-mono text-xs font-semibold transition cursor-pointer flex items-center justify-center space-x-2 hover:border-[#e5b364]/40"
-          >
-            <Zap className="w-4 h-4 text-[#e5b364]" />
-            <span>Test Search Speed Demo</span>
-          </button>
+            <button
+              onClick={onOpenDemo}
+              className="px-6 py-3.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-[#f0ebe1] font-mono text-xs font-semibold transition cursor-pointer flex items-center justify-center space-x-2 hover:border-[#e5b364]/40"
+            >
+              <Zap className="w-4 h-4 text-[#e5b364]" />
+              <span>Test Search Speed Demo</span>
+            </button>
 
-          <a
-            href="#download"
-            className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-[#8e887d] hover:text-[#f0ebe1] font-mono text-xs font-semibold transition flex items-center justify-center space-x-2"
-          >
-            <Download className="w-4 h-4" />
-            <span>Download Desktop (Win/Mac/Linux)</span>
-          </a>
-        </div>
+            <a
+              href="#download"
+              className="px-5 py-3.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-[#8e887d] hover:text-[#f0ebe1] font-mono text-xs font-semibold transition flex items-center justify-center space-x-2"
+            >
+              <Download className="w-4 h-4" />
+              <span>Download (.exe)</span>
+            </a>
+          </div>
 
-        {/* Trust Badges */}
-        <div className="pt-6 flex flex-wrap items-center justify-center gap-6 text-[11px] font-mono text-[#8e887d]">
-          <span className="flex items-center space-x-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5 text-[#e5b364]" />
-            <span>100% Offline &amp; Air-Gap Capable</span>
-          </span>
-          <span className="flex items-center space-x-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5 text-[#e5b364]" />
-            <span>Zero Per-Query Subscription Fees</span>
-          </span>
-          <span className="flex items-center space-x-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5 text-[#e5b364]" />
-            <span>End-to-End Encrypted Remote Sync</span>
-          </span>
-        </div>
-      </section>
-
-      {/* 2. CINEMATIC ANIMATED LOOP VIDEO SHOWCASE */}
-      <section className="relative rounded-3xl overflow-hidden border border-[#e5b364]/30 bg-[#0d0d12]/90 shadow-2xl shadow-[#e5b364]/10 backdrop-blur-2xl p-4 sm:p-6 space-y-4">
-        {/* Top Control Bar */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
-          <div className="flex items-center space-x-2.5">
-            <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="font-mono text-xs uppercase font-bold text-[#f0ebe1] tracking-wider">
-              {videoMode === 'core' ? 'Holographic Neural Engine (Live Render)' : 'Desktop Workstation Dashboard (Active Session)'}
+          {/* Feature Badges */}
+          <div className="pt-4 flex flex-wrap items-center gap-4 text-xs font-mono text-[#8e887d]">
+            <span className="flex items-center space-x-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-[#e5b364]" />
+              <span>Offline &amp; Air-Gap Capable</span>
+            </span>
+            <span className="flex items-center space-x-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-[#e5b364]" />
+              <span>Zero Per-Query Token Fees</span>
+            </span>
+            <span className="flex items-center space-x-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-[#e5b364]" />
+              <span>End-to-End Encrypted Relay</span>
             </span>
           </div>
-
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => setVideoMode('core')}
-              className={`px-3 py-1 rounded-lg text-xs font-mono font-medium transition cursor-pointer ${
-                videoMode === 'core'
-                  ? 'bg-[#e5b364] text-[#060608] font-bold'
-                  : 'bg-white/5 text-[#8e887d] hover:text-[#f0ebe1]'
-              }`}
-            >
-              Neural Core
-            </button>
-            <button
-              onClick={() => setVideoMode('workstation')}
-              className={`px-3 py-1 rounded-lg text-xs font-mono font-medium transition cursor-pointer ${
-                videoMode === 'workstation'
-                  ? 'bg-[#e5b364] text-[#060608] font-bold'
-                  : 'bg-white/5 text-[#8e887d] hover:text-[#f0ebe1]'
-              }`}
-            >
-              Desktop Workstation
-            </button>
-            <button
-              onClick={() => setIsPlaying(!isPlaying)}
-              className="p-1.5 rounded-lg bg-white/5 text-[#8e887d] hover:text-[#f0ebe1] transition cursor-pointer"
-              title={isPlaying ? 'Pause Loop' : 'Play Loop'}
-            >
-              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-            </button>
-          </div>
         </div>
 
-        {/* Video / Visual Container */}
-        <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-black/80 border border-white/10 group">
-          <img
-            src={videoMode === 'core' ? '/assets/hero_neural_core.jpg' : '/assets/workstation_demo.jpg'}
-            alt="GhostBrain Cinematic Showcase"
-            className={`w-full h-full object-cover transition-transform duration-1000 ${
-              isPlaying ? 'scale-105 filter brightness-105' : 'scale-100'
-            }`}
-          />
+        {/* Right Column: Holographic Animated Hero Video Showcase */}
+        <div className="lg:col-span-5 relative">
+          <div className="relative rounded-3xl overflow-hidden border border-[#e5b364]/40 bg-[#0d0d12]/95 shadow-2xl shadow-[#e5b364]/15 backdrop-blur-2xl p-3.5 space-y-3">
+            
+            {/* Top Control Bar */}
+            <div className="flex items-center justify-between pb-2.5 border-b border-white/10 text-xs font-mono">
+              <div className="flex items-center space-x-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-[11px] font-bold text-[#f0ebe1] uppercase tracking-wider">
+                  {heroView === 'brain' ? 'GhostBrain Neural Core' : 'Desktop Workstation'}
+                </span>
+              </div>
 
-          {/* Holographic Scanline Overlay */}
-          <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-transparent via-[#e5b364]/5 to-transparent bg-[length:100%_4px] opacity-40 animate-pulse" />
-
-          {/* Floating HUD Telemetry Overlay */}
-          <div className="absolute bottom-4 left-4 right-4 flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-[#060608]/85 backdrop-blur-md border border-white/10 text-[11px] font-mono text-[#8e887d]">
-            <div className="flex items-center space-x-3">
-              <span className="flex items-center space-x-1 text-[#e5b364] font-bold">
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Zero-Cloud Compute</span>
-              </span>
-              <span>Host CPU: 38°C</span>
-              <span>VRAM: 0 MB (Offline Isolation)</span>
+              <div className="flex items-center space-x-1.5">
+                <button
+                  onClick={() => setHeroView('brain')}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
+                    heroView === 'brain' ? 'bg-[#e5b364] text-[#060608]' : 'bg-white/5 text-[#8e887d] hover:text-[#f0ebe1]'
+                  }`}
+                >
+                  Neural Core
+                </button>
+                <button
+                  onClick={() => setHeroView('workstation')}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
+                    heroView === 'workstation' ? 'bg-[#e5b364] text-[#060608]' : 'bg-white/5 text-[#8e887d] hover:text-[#f0ebe1]'
+                  }`}
+                >
+                  Workstation
+                </button>
+                <button
+                  onClick={() => setIsPlaying(!isPlaying)}
+                  className="p-1 rounded-lg bg-white/5 text-[#8e887d] hover:text-[#f0ebe1] transition cursor-pointer"
+                >
+                  {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                </button>
+              </div>
             </div>
-            <div className="flex items-center space-x-2">
-              <span className="text-emerald-400 font-bold">● Mathematical Proof: Ed25519 Verified</span>
+
+            {/* Visual Screen Container */}
+            <div className="relative aspect-[4/3] w-full rounded-2xl overflow-hidden bg-black/90 border border-white/10">
+              <img
+                src={heroView === 'brain' ? '/assets/hero_neural_core.jpg' : '/assets/workstation_demo.jpg'}
+                alt="GhostBrain Visual Showcase"
+                className={`w-full h-full object-cover transition-all duration-700 ${
+                  isPlaying ? 'scale-105 filter brightness-105' : 'scale-100'
+                }`}
+              />
+
+              {/* Glowing Scanlines Overlay */}
+              <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-transparent via-[#e5b364]/10 to-transparent bg-[length:100%_4px] opacity-40 animate-pulse" />
+
+              {/* HUD Telemetry Tag */}
+              <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between p-2.5 rounded-xl bg-[#060608]/90 backdrop-blur-md border border-white/10 text-[10px] font-mono text-[#8e887d]">
+                <span className="text-[#e5b364] font-bold flex items-center space-x-1">
+                  <Sparkles className="w-3 h-3" />
+                  <span>100% Zero-Cloud Storage</span>
+                </span>
+                <span className="text-emerald-400 font-bold">1.8 ms Search Latency</span>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* 3. THE PROBLEM VS THE SOLUTION */}
+      {/* 2. THE PROBLEM VS THE SOLUTION */}
       <section className="space-y-8">
         <div className="text-center space-y-2">
           <span className="text-xs font-mono uppercase tracking-widest text-[#e5b364]">The Paradigm Shift</span>
@@ -191,7 +196,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Cloud AI Trap Card */}
-          <div className="p-6 rounded-3xl bg-[#0d0d12]/90 backdrop-blur-xl border border-red-500/25 space-y-5">
+          <div className="p-6 rounded-3xl bg-[#0d0d12]/95 backdrop-blur-xl border border-red-500/25 space-y-5">
             <div className="flex items-center justify-between pb-3 border-b border-white/5">
               <span className="text-xs font-mono font-bold text-red-400 uppercase tracking-wider">
                 The SaaS Cloud AI Trap
@@ -250,7 +255,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
       </section>
 
-      {/* 4. PRODUCT SHOWCASE TABS */}
+      {/* 3. PRODUCT SHOWCASE TABS */}
       <section className="space-y-8">
         <div className="text-center space-y-2">
           <span className="text-xs font-mono uppercase tracking-widest text-[#e5b364]">Product Architecture</span>
@@ -264,7 +269,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
         {/* Tab Buttons */}
         <div className="flex justify-center">
-          <div className="p-1 rounded-2xl bg-[#0d0d12]/90 border border-white/10 flex flex-wrap gap-1 text-xs font-mono">
+          <div className="p-1 rounded-2xl bg-[#0d0d12] border border-white/10 flex flex-wrap gap-1 text-xs font-mono">
             <button
               onClick={() => setShowcaseTab('search')}
               className={`px-4 py-2.5 rounded-xl font-medium transition cursor-pointer flex items-center space-x-2 ${
@@ -417,7 +422,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
       </section>
 
-      {/* 5. COMMERCIAL PRICING MATRIX */}
+      {/* 4. COMMERCIAL PRICING MATRIX */}
       <section className="space-y-8" id="pricing">
         <div className="text-center space-y-2">
           <span className="text-xs font-mono uppercase tracking-widest text-[#e5b364]">Transparent Economics</span>
@@ -431,7 +436,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Plan 1: Personal */}
-          <div className="p-6 rounded-3xl bg-[#0d0d12]/90 backdrop-blur-xl border border-white/10 flex flex-col justify-between space-y-6">
+          <div className="p-6 rounded-3xl bg-[#0d0d12]/95 backdrop-blur-xl border border-white/10 flex flex-col justify-between space-y-6">
             <div className="space-y-4">
               <div className="space-y-1">
                 <span className="text-xs font-mono text-[#8e887d] uppercase font-bold">Personal Edition</span>
@@ -525,7 +530,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
 
           {/* Plan 3: Clinic & Enterprise */}
-          <div className="p-6 rounded-3xl bg-[#0d0d12]/90 backdrop-blur-xl border border-white/10 flex flex-col justify-between space-y-6">
+          <div className="p-6 rounded-3xl bg-[#0d0d12]/95 backdrop-blur-xl border border-white/10 flex flex-col justify-between space-y-6">
             <div className="space-y-4">
               <div className="space-y-1">
                 <span className="text-xs font-mono text-[#8e887d] uppercase font-bold">Enterprise</span>
@@ -571,7 +576,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
       </section>
 
-      {/* 6. DOWNLOAD / FINAL CTA */}
+      {/* 5. DOWNLOAD / FINAL CTA */}
       <section className="p-8 sm:p-12 rounded-3xl bg-[#0d0d12]/95 backdrop-blur-2xl border border-[#e5b364]/30 text-center space-y-6 shadow-2xl shadow-[#e5b364]/10" id="download">
         <h2 className="text-3xl sm:text-5xl font-serif font-bold text-[#f0ebe1] max-w-2xl mx-auto">
           Take Back Your Cognitive Sovereignty Today.
@@ -603,7 +608,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
       </section>
 
-      {/* 7. MINIMALIST LUXURY FOOTER */}
+      {/* 6. MINIMALIST LUXURY FOOTER */}
       <footer className="pt-12 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between text-xs font-mono text-[#8e887d] gap-4">
         <div className="flex items-center space-x-2">
           <ShieldCheck className="w-4 h-4 text-[#e5b364]" />
