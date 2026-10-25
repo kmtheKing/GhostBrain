@@ -1,0 +1,22 @@
+name = "ghostbrain-relay"
+main = "src/index.ts"
+compatibility_date = "2024-10-22"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ENVIRONMENT = "production"
+MAX_CLIENTS_PER_SESSION = 5
+
+[[durable_objects.bindings]]
+name = "RELAY_SESSION"
+class_name = "RelaySessionDO"
+
+# SQLite-backed Durable Objects on Cloudflare Free Tier
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RelaySessionDO"]
+
+[[d1_databases]]
+binding = "ghostbrain_relay_db"
+database_name = "ghostbrain-relay-db"
+database_id = "39b1b481-4e54-42b2-9d02-8c383e09663d"

@@ -14,11 +14,13 @@ import type {
   ChatAskResponse,
   SystemTelemetry,
   PairedDeviceRecord,
-  PairingSessionInfo
+  PairingSessionInfo,
+  RelayStatus
 } from '@ghostbrain/shared-types';
 
 import { FolderWatcherManager } from './indexer/watcher.js';
 import { WorkerManager } from './workers/worker-manager.js';
+import { RelayClient } from './relay-client.js';
 
 export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: FolderWatcherManager): void {
   const db = getDatabase();
@@ -252,6 +254,24 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
       validUntil: Date.now() + 365 * 24 * 3600 * 1000,
       updatesUntil: Date.now() + 365 * 24 * 3600 * 1000
     };
+  });
+
+  // Zero-Knowledge E2E Relay Tunnel Status
+  ipcMain.handle('relay:status', (): RelayStatus => {
+    try {
+      const client = RelayClient.getInstance();
+      const status = client.getStatus();
+      return {
+        connected: status.connected,
+        deviceId: status.deviceId,
+        peersCount: status.peersCount
+      };
+    } catch {
+      return {
+        connected: false,
+        peersCount: 0
+      };
+    }
   });
 
 
