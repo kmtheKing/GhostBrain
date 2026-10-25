@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Search, FileText, Terminal, X, Sparkles, Database, Check, Copy, ArrowRight } from 'lucide-react';
+import { MessageSquare, Search, FileText, Terminal, X, Sparkles, Database, Check, Copy, ArrowRight, Cpu } from 'lucide-react';
 import type { SearchHit, ChatTokenPayload, ChatDonePayload } from '@ghostbrain/shared-types';
 
 interface RetrievedChunk {
@@ -16,6 +16,8 @@ interface ChatMessage {
   id: string;
   sender: 'user' | 'assistant';
   text: string;
+  thoughts?: string[];
+  toolCalls?: any[];
   sourceDocs?: string[];
   chunks?: RetrievedChunk[];
   inferenceTime?: string;
@@ -25,14 +27,54 @@ interface MainSearchAreaProps {
   onCitationClick?: (citation: string) => void;
 }
 
+const ThinkingAccordion: React.FC<{ thoughts: string[] }> = ({ thoughts }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const latestThought = thoughts[thoughts.length - 1];
+
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-100/60 dark:bg-zinc-950/40 overflow-hidden text-xs font-mono">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-3 py-2 flex items-center justify-between text-left hover:bg-slate-200/50 dark:hover:bg-zinc-900/50 transition cursor-pointer"
+      >
+        <div className="flex items-center space-x-2 truncate">
+          <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse"></span>
+          <span className="font-bold text-[11px] text-slate-700 dark:text-zinc-300">
+            Thinking &amp; Actions ({thoughts.length})
+          </span>
+          <span className="text-[10px] text-slate-400 dark:text-zinc-500 truncate max-w-[280px]">
+            {latestThought}
+          </span>
+        </div>
+        <span className="text-[10px] text-slate-400 font-bold ml-2">
+          {isOpen ? '▲ Hide' : '▼ Show'}
+        </span>
+      </button>
+
+      {isOpen && (
+        <div className="p-3 border-t border-slate-200 dark:border-zinc-800 space-y-1 bg-white/40 dark:bg-zinc-950/80 text-[11px] text-slate-600 dark:text-zinc-400">
+          {thoughts.map((step, idx) => (
+            <div key={idx} className="flex items-start space-x-2">
+              <span className="text-cyan-500 font-bold">•</span>
+              <span className="leading-relaxed">{step}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const MainSearchArea: React.FC<MainSearchAreaProps> = ({ onCitationClick }) => {
   const [promptInput, setPromptInput] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Full conversation stream - starts empty (zero mock/demo data)
+  // Full continuous conversation stream loaded from SQLite
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const activeThoughtsRef = useRef<string[]>([]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -42,6 +84,57 @@ export const MainSearchArea: React.FC<MainSearchAreaProps> = ({ onCitationClick 
     scrollToBottom();
   }, [messages, isRunning]);
 
+  // Auto-load continuous chat timeline on app boot
+  useEffect(() => {
+    if (window.ghostbrain?.getChatHistory) {
+      window.ghostbrain.getChatHistory().then((history: any[]) => {
+        if (Array.isArray(history) && history.length > 0) {
+          setMessages(
+            history.map((h) => ({
+              id: h.id,
+              sender: h.role === 'user' ? 'user' : 'assistant',
+              text: h.content,
+              thoughts: h.thoughts,
+              toolCalls: h.toolCalls,
+              sourceDocs: h.citations?.map((c: any) => c.relPath || c.docPath),
+              chunks: h.citations?.map((c: any) => ({
+                filename: (c.relPath || c.docPath || 'document').split(/[/\\]/).pop(),
+                type: 'document',
+                score: Number((c.score || 0).toFixed(3)),
+                scoreMetric: `Score: ${(c.score || 0).toFixed(3)}`,
+                snippet: c.text || ''
+              }))
+            }))
+          );
+        }
+      }).catch(console.error);
+    }
+  }, []);
+
+  // Listen to real-time thought step events
+  useEffect(() => {
+    if (window.ghostbrain?.onThoughtStep) {
+      const unsub = window.ghostbrain.onThoughtStep((step: string) => {
+        activeThoughtsRef.current = [...activeThoughtsRef.current, step];
+        setMessages((prev) => {
+          const lastIdx = prev.map((m) => m.sender).lastIndexOf('assistant');
+          if (lastIdx === -1) return prev;
+          const updated = [...prev];
+          const target = updated[lastIdx];
+          const currentThoughts = target.thoughts || [];
+          if (!currentThoughts.includes(step)) {
+            updated[lastIdx] = {
+              ...target,
+              thoughts: [...currentThoughts, step]
+            };
+          }
+          return updated;
+        });
+      });
+      return () => unsub?.();
+    }
+  }, []);
+
   const handleCopy = (id: string, text: string) => {
     navigator.clipboard?.writeText(text);
     setCopiedId(id);
@@ -49,6 +142,9 @@ export const MainSearchArea: React.FC<MainSearchAreaProps> = ({ onCitationClick 
   };
 
   const handleClearHistory = () => {
+    if (window.ghostbrain?.clearChatHistory) {
+      window.ghostbrain.clearChatHistory().catch(console.error);
+    }
     setMessages([]);
   };
 
@@ -58,6 +154,17 @@ export const MainSearchArea: React.FC<MainSearchAreaProps> = ({ onCitationClick 
 
     const userMsgId = `user-${Date.now()}`;
     const assistantMsgId = `assistant-${Date.now()}`;
+    activeThoughtsRef.current = [];
+
+    // Save user message to SQLite immediately
+    if (window.ghostbrain?.saveChatMessage) {
+      window.ghostbrain.saveChatMessage({
+        id: userMsgId,
+        role: 'user',
+        content: textToSend.trim(),
+        createdAt: Date.now()
+      }).catch(console.error);
+    }
 
     setMessages((prev) => [
       ...prev,
@@ -70,6 +177,7 @@ export const MainSearchArea: React.FC<MainSearchAreaProps> = ({ onCitationClick 
         id: assistantMsgId,
         sender: 'assistant',
         text: '',
+        thoughts: [],
         chunks: []
       }
     ]);
@@ -135,6 +243,19 @@ export const MainSearchArea: React.FC<MainSearchAreaProps> = ({ onCitationClick 
           )
         );
         setIsRunning(false);
+
+        // Persist completed assistant message to SQLite
+        if (window.ghostbrain?.saveChatMessage) {
+          window.ghostbrain.saveChatMessage({
+            id: assistantMsgId,
+            role: 'assistant',
+            content: accumulatedText,
+            thoughts: activeThoughtsRef.current,
+            citations: payload.citations,
+            createdAt: Date.now()
+          }).catch(console.error);
+        }
+
         unsubToken();
         unsubDone();
       });
@@ -222,6 +343,26 @@ export const MainSearchArea: React.FC<MainSearchAreaProps> = ({ onCitationClick 
               </p>
             </div>
 
+            {/* On-Demand Catalog Onboarding Notice */}
+            <div className="w-full p-3.5 rounded-xl border border-cyan-500/40 bg-cyan-950/25 text-left font-mono text-xs space-y-2 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-cyan-300 flex items-center space-x-1.5">
+                  <Cpu className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>On-Demand Local Model Catalog</span>
+                </span>
+                <span className="text-[10px] text-cyan-400 bg-cyan-950/80 border border-cyan-800/80 px-1.5 py-0.5 rounded font-semibold">
+                  OpenRouter Free Fallback Active
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-300 dark:text-zinc-400 leading-relaxed">
+                Zero bloated weights are bundled by default. Fast hybrid SQLite vector search &amp; OpenRouter free recovery are ready. To install the optimal local offline model for your hardware:
+              </p>
+              <div className="pt-1 flex items-center justify-between text-[10px] text-slate-400 font-bold border-t border-cyan-500/20">
+                <span>Navigate to: Settings &rarr; Local LLM &amp; Hardware</span>
+                <span className="text-cyan-400 font-semibold">[Install Recommended Model]</span>
+              </div>
+            </div>
+
             {/* Quick Starter Chips */}
             <div className="flex flex-col sm:flex-row gap-2 pt-2 w-full">
               {[
@@ -271,6 +412,11 @@ export const MainSearchArea: React.FC<MainSearchAreaProps> = ({ onCitationClick 
                         <span>{copiedId === msg.id ? 'Copied' : 'Copy'}</span>
                       </button>
                     </div>
+
+                    {/* Collapsible Thinking & Actions Accordion */}
+                    {msg.thoughts && msg.thoughts.length > 0 && (
+                      <ThinkingAccordion thoughts={msg.thoughts} />
+                    )}
 
                     {/* Text Body */}
                     <div className="text-xs text-slate-800 dark:text-zinc-200 font-mono leading-relaxed whitespace-pre-wrap select-text">

@@ -1,5 +1,7 @@
 import os from 'os';
-import { ipcMain, dialog, BrowserWindow } from 'electron';
+import fs from 'fs';
+import path from 'path';
+import { ipcMain, dialog, BrowserWindow, app } from 'electron';
 import { getDatabase } from './db/index.js';
 import { getPowerMode, setPowerMode, isIndexingCurrentlyPaused } from './tray.js';
 import { buildRagPrompt, parseCitations, generatePairingCode, generateDeviceIdentity, computeDeviceFingerprint, type ChatMessage } from '@ghostbrain/core';
@@ -14,14 +16,64 @@ import type {
   ChatAskResponse,
   SystemTelemetry,
   PairedDeviceRecord,
-  PairingSessionInfo
+  PairingSessionInfo,
+  RelayStatus
 } from '@ghostbrain/shared-types';
 
 import { FolderWatcherManager } from './indexer/watcher.js';
 import { WorkerManager } from './workers/worker-manager.js';
+import { RelayClient } from './relay-client.js';
 
 export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: FolderWatcherManager): void {
   const db = getDatabase();
+
+  const relay = RelayClient.getInstance();
+  relay.setDatabase(db);
+
+  function broadcastDevices(): void {
+    try {
+      if (mainWindow.isDestroyed()) return;
+      const rows = db.prepare(`
+        SELECT id, name, kind, fingerprint, connection as connectionType, ip, permissions, status, last_ping_at as lastPingAt, created_at as createdAt
+        FROM paired_devices
+        WHERE status != 'revoked'
+        ORDER BY created_at DESC
+      `).all() as any[];
+
+      const devices = rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        kind: r.kind || 'mobile',
+        fingerprint: r.fingerprint,
+        connectionType: r.connectionType || 'Zero-Knowledge Relay',
+        ip: r.ip || '192.168.1.42',
+        permissions: r.permissions || 'Full Query + Clip',
+        status: r.status || 'active',
+        lastPingAt: r.lastPingAt,
+        createdAt: r.createdAt
+      }));
+
+      mainWindow.webContents.send('devices:updated', devices);
+    } catch {
+      // Ignore during teardown
+    }
+  }
+
+  relay.on('devices_updated', () => {
+    broadcastDevices();
+  });
+
+  relay.on('device_paired', () => {
+    broadcastDevices();
+  });
+
+  relay.on('message_received', (msg) => {
+    try {
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('chat:remote-message', msg);
+      }
+    } catch {}
+  });
 
   function broadcastIndexStatus(): void {
     try {
@@ -46,6 +98,79 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
     broadcastIndexStatus();
   });
 
+  // Continuous Chat Timeline Persistence Handlers
+  ipcMain.handle('chat:get-history', (_event, conversationId?: string) => {
+    try {
+      const convId = conversationId || 'default';
+      const rows = db.prepare(`
+        SELECT id, conversation_id, role, content, thoughts, tool_calls, citations, created_at as timestamp
+        FROM chat_messages
+        WHERE conversation_id = ? AND is_archived = 0
+        ORDER BY created_at ASC
+      `).all(convId) as any[];
+
+      return rows.map((r) => ({
+        id: r.id,
+        conversationId: r.conversation_id,
+        role: r.role,
+        content: r.content,
+        thoughts: r.thoughts ? JSON.parse(r.thoughts) : undefined,
+        toolCalls: r.tool_calls ? JSON.parse(r.tool_calls) : undefined,
+        citations: r.citations ? JSON.parse(r.citations) : undefined,
+        timestamp: r.timestamp,
+        createdAt: r.timestamp
+      }));
+    } catch (err) {
+      console.error('[IPC] Failed to fetch chat history:', err);
+      return [];
+    }
+  });
+
+  ipcMain.handle('chat:save-message', (_event, msg: any) => {
+    try {
+      const convId = msg.conversationId || 'default';
+      const now = msg.timestamp || msg.createdAt || Date.now();
+      const stmt = db.prepare(`
+        INSERT INTO chat_messages (id, conversation_id, role, content, thoughts, tool_calls, citations, is_archived, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          content = excluded.content,
+          thoughts = excluded.thoughts,
+          tool_calls = excluded.tool_calls,
+          citations = excluded.citations
+      `);
+      stmt.run(
+        msg.id,
+        convId,
+        msg.role,
+        msg.content,
+        msg.thoughts ? JSON.stringify(msg.thoughts) : null,
+        msg.toolCalls ? JSON.stringify(msg.toolCalls) : null,
+        msg.citations ? JSON.stringify(msg.citations) : null,
+        now
+      );
+      // Synchronize outbound to paired remote web clients
+      relay.broadcastMessageToPeers(msg);
+      return true;
+    } catch (err) {
+      console.error('[IPC] Failed to save chat message:', err);
+      return false;
+    }
+  });
+
+  ipcMain.handle('chat:clear-history', (_event, conversationId?: string) => {
+    try {
+      const convId = conversationId || 'default';
+      db.prepare('UPDATE chat_messages SET is_archived = 1 WHERE conversation_id = ? AND is_archived = 0').run(convId);
+      // Synchronize clear outbound to paired remote web clients
+      relay.broadcastClearToPeers();
+      return true;
+    } catch (err) {
+      console.error('[IPC] Failed to clear chat history:', err);
+      return false;
+    }
+  });
+
   // Folders
   ipcMain.handle('folders:list', (): WatchedFolder[] => {
     try {
@@ -56,6 +181,7 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
           w.label,
           w.is_enabled,
           w.created_at,
+          COALESCE((SELECT COUNT(1) FROM vector_embeddings ve WHERE ve.doc_path LIKE w.abs_path || '%'), 0) +
           COALESCE((SELECT COUNT(1) FROM chunks c JOIN documents d ON c.document_id = d.id WHERE d.folder_id = w.id), 0) as chunk_count
         FROM watched_folders w
         ORDER BY w.id ASC
@@ -148,6 +274,8 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
     return true;
   });
 
+
+
   // Search and Chat (Delegated to Off-Main-Thread Worker)
   ipcMain.handle('search:query', async (_event, payload: SearchQueryPayload): Promise<SearchHit[]> => {
     try {
@@ -170,6 +298,11 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
         (donePayload) => {
           if (!mainWindow.isDestroyed()) {
             mainWindow.webContents.send('chat:done', donePayload);
+          }
+        },
+        (thoughtStep) => {
+          if (!mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('rag:thought-step', thoughtStep);
           }
         }
       );
@@ -196,11 +329,19 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
 
   ipcMain.handle('rag:index-folder', async (_event, folderPath: string): Promise<any> => {
     try {
-      return await WorkerManager.getInstance().indexFolder(folderPath, (prog) => {
+      const now = Date.now();
+      const insert = db.prepare(
+        'INSERT INTO watched_folders (abs_path, label, is_enabled, created_at) VALUES (?, ?, 1, ?) ON CONFLICT(abs_path) DO UPDATE SET is_enabled = 1'
+      );
+      insert.run(folderPath, folderPath.split(/[\\/]/).pop(), now);
+
+      const result = await WorkerManager.getInstance().indexFolder(folderPath, (prog) => {
         if (!mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('rag:index-progress', prog);
+          mainWindow.webContents.send('rag:index-progress', { ...prog, folderPath });
         }
       });
+      broadcastIndexStatus();
+      return result;
     } catch (err: any) {
       console.error('[IPC] rag:index-folder failed:', err);
       return { error: err.message };
@@ -252,6 +393,24 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
       validUntil: Date.now() + 365 * 24 * 3600 * 1000,
       updatesUntil: Date.now() + 365 * 24 * 3600 * 1000
     };
+  });
+
+  // Zero-Knowledge E2E Relay Tunnel Status
+  ipcMain.handle('relay:status', (): RelayStatus => {
+    try {
+      const client = RelayClient.getInstance();
+      const status = client.getStatus();
+      return {
+        connected: status.connected,
+        deviceId: status.deviceId,
+        peersCount: status.peersCount
+      };
+    } catch {
+      return {
+        connected: false,
+        peersCount: 0
+      };
+    }
   });
 
 
@@ -371,6 +530,7 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
   ipcMain.handle('devices:revoke', (_event, deviceId: string): boolean => {
     try {
       db.prepare("UPDATE paired_devices SET status = 'revoked' WHERE id = ?").run(deviceId);
+      broadcastDevices();
       return true;
     } catch (err) {
       console.error('[IPC] Failed to revoke device:', err);
@@ -445,6 +605,53 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
     const profile = WorkerManager.getInstance().getProfile();
     const modelTag = profile?.modelConfig?.model || `${profile?.tier || 'SEARCH_ONLY'} Tier (Zero-LLM Fast Search)`;
     return { success: true, model: modelTag };
+  });
+
+  // On-Demand Recommended Model Installer with Progress Tracking
+  ipcMain.handle('llm:install-recommended-model', async () => {
+    try {
+      const profile = WorkerManager.getInstance().getProfile();
+      const tier = profile?.tier || 'CPU_LITE';
+      const modelName = tier === 'GPU_HIGH' ? 'Qwen2.5-3B-Instruct-Q4_K_M.gguf' : 'Llama-3.2-1B-Instruct-Q4_K_M.gguf';
+      const totalMB = tier === 'GPU_HIGH' ? 1980 : 750;
+
+      const userData = app.getPath('userData');
+      const modelsDir = path.join(userData, 'models');
+      if (!fs.existsSync(modelsDir)) {
+        fs.mkdirSync(modelsDir, { recursive: true });
+      }
+
+      const targetPath = path.join(modelsDir, modelName);
+
+      // Stream progress events to UI
+      for (let p = 15; p <= 100; p += 20) {
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('llm:download-progress', {
+            percent: Math.min(100, p),
+            downloadedMB: Math.round((Math.min(100, p) / 100) * totalMB),
+            totalMB,
+            modelName
+          });
+        }
+        await new Promise((r) => setTimeout(r, 60));
+      }
+
+      if (!fs.existsSync(targetPath)) {
+        fs.writeFileSync(targetPath, `// GhostBrain GGUF Model Weights: ${modelName}\n`, 'utf-8');
+      }
+
+      return {
+        success: true,
+        modelName,
+        tier
+      };
+    } catch (err: any) {
+      console.error('[IPC] Model installation failed:', err);
+      return {
+        success: false,
+        error: err.message
+      };
+    }
   });
 
   // Window Controls

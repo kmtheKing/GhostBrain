@@ -7,6 +7,7 @@ import { setupTray } from './tray.js';
 import { registerIpcHandlers } from './ipc.js';
 import { FolderWatcherManager } from './indexer/watcher.js';
 import { WorkerManager } from './workers/worker-manager.js';
+import { RelayClient } from './relay-client.js';
 
 let mainWindow: BrowserWindow | null = null;
 let watcherManager: FolderWatcherManager | null = null;
@@ -64,6 +65,13 @@ if (!gotTheLock) {
     // Start background file watchers
     if (watcherManager) {
       await watcherManager.startAll();
+    }
+
+    // Initialize Zero-Knowledge Outbound Relay Tunnel
+    try {
+      RelayClient.getInstance().start();
+    } catch (err) {
+      console.warn('[Main] Relay client notice:', err);
     }
 
     // Check for smoke test flag to cleanly verify boot in headless/CI environments
@@ -150,6 +158,11 @@ app.on('before-quit', async () => {
   isQuitting = true;
   if (watcherManager) {
     await watcherManager.stopAll();
+  }
+  try {
+    RelayClient.getInstance().stop();
+  } catch {
+    // Ignore shutdown error
   }
   closeDatabase();
 });

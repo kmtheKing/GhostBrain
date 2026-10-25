@@ -39,8 +39,9 @@ export const ConnectModal: React.FC<ConnectModalProps> = ({ isOpen, onClose, onS
     setTimeout(() => {
       setIsAuthorizing(false);
       setIsSuccess(true);
-      // Store paired token in localStorage
+      // Store paired token and pairing code in localStorage
       localStorage.setItem('ghostbrain_paired_token', 'gb_remote_session_' + Date.now());
+      localStorage.setItem('ghostbrain_pairing_code', otpCode.toUpperCase());
       localStorage.setItem('ghostbrain_host_alias', 'Home Workstation');
       setTimeout(() => {
         onSuccessfulPair();

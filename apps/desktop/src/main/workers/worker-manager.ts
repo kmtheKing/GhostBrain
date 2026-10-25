@@ -74,10 +74,11 @@ export class WorkerManager {
   public async streamChat(
     payload: ChatAskPayload,
     onToken: (token: { streamId: string; delta: string }) => void,
-    onDone: (done: { streamId: string; citations: ChatCitation[]; latencyMs: number; tier?: string }) => void
+    onDone: (done: { streamId: string; citations: ChatCitation[]; latencyMs: number; tier?: string }) => void,
+    onThought?: (step: string) => void
   ): Promise<{ streamId: string }> {
     if (!this.db) throw new Error('Database not initialized');
-    const result = await processChatStream(this.db, payload, onToken, onDone, this.profile);
+    const result = await processChatStream(this.db, payload, onToken, onDone, this.profile, onThought);
     return { streamId: result.streamId };
   }
 }

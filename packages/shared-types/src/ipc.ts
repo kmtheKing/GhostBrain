@@ -149,9 +149,11 @@ export interface GhostBrainApi {
   listPairedDevices: () => Promise<PairedDeviceRecord[]>;
   revokePairedDevice: (deviceId: string) => Promise<boolean>;
 
-  // Tier-based LLM Setup
+  // Tier-based LLM Setup & On-Demand Catalog Installer
   setupTier?: (tier: 'low' | 'balanced' | 'high') => Promise<{ success: boolean; model: string }>;
   onPullProgress?: (callback: (progress: any) => void) => () => void;
+  installRecommendedModel?: () => Promise<{ success: boolean; modelName: string; tier: string }>;
+  onModelInstallProgress?: (callback: (progress: { percent: number; downloadedMB: number; totalMB: number; modelName: string }) => void) => () => void;
   // System Telemetry & Native Dialogs
   getSystemTelemetry: () => Promise<SystemTelemetry>;
   selectModelFile: () => Promise<string | null>;
@@ -166,10 +168,27 @@ export interface GhostBrainApi {
   onRagIndexProgress?: (callback: (progress: any) => void) => () => void;
 
 
+  // Continuous Chat Timeline Persistence
+  getChatHistory?: (conversationId?: string) => Promise<PersistedChatMessage[]>;
+  saveChatMessage?: (msg: PersistedChatMessage) => Promise<boolean>;
+  clearChatHistory?: (conversationId?: string) => Promise<boolean>;
+  onThoughtStep?: (callback: (step: string) => void) => () => void;
+
   // Window
   minimizeWindow: () => void;
   maximizeWindow: () => void;
   closeWindow: () => void;
   onMaximizeChange?: (callback: (isMaximized: boolean) => void) => () => void;
+}
+
+export interface PersistedChatMessage {
+  id: string;
+  conversationId?: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  thoughts?: any;
+  toolCalls?: any;
+  citations?: any;
+  createdAt?: number;
 }
 
