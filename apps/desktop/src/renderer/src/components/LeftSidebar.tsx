@@ -1,5 +1,5 @@
-import React from 'react';
-import { Folder, Activity, Link2, Plus, AlertCircle, CheckCircle2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Folder, Activity, Link2, Plus, AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
 import type { WatchedDirectory, TelemetryState, PairedClient } from '../types';
 
 interface LeftSidebarProps {
@@ -19,6 +19,27 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onDirectoryClick,
   onOpenSettings,
 }) => {
+  const [indexProgress, setIndexProgress] = useState<{
+    current: string;
+    total: number;
+    indexed: number;
+    skipped: number;
+    folderPath?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (window.ghostbrain?.onRagIndexProgress) {
+      const unsub = window.ghostbrain.onRagIndexProgress((prog: any) => {
+        setIndexProgress(prog);
+        if (prog && prog.total > 0 && (prog.indexed + prog.skipped) >= prog.total) {
+          setTimeout(() => setIndexProgress(null), 3000);
+        }
+      });
+      return () => unsub?.();
+    }
+  }, []);
+
+  const totalVaultChunks = directories.reduce((acc, d) => acc + (d.chunks || 0), 0);
   const hostTotalGB = (telemetry.hostTotalRamMB ? telemetry.hostTotalRamMB / 1024 : 16.0);
   const hostUsedGB = (telemetry.hostUsedRamMB ? telemetry.hostUsedRamMB / 1024 : 5.8);
   const hostRamPercent = Math.min(100, Math.round((hostUsedGB / hostTotalGB) * 100));
@@ -35,10 +56,41 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             <Folder className="w-3.5 h-3.5 text-amber-500" />
             <span>Watched Directories</span>
           </div>
-          <span className="text-[10px] text-slate-500 dark:text-zinc-400 font-mono">
-            {directories.length} {directories.length === 1 ? 'Folder' : 'Folders'}
-          </span>
+          <div className="flex flex-col items-end text-[10px] font-mono">
+            <span className="text-slate-500 dark:text-zinc-400">
+              {directories.length} {directories.length === 1 ? 'Folder' : 'Folders'}
+            </span>
+            <span className="text-cyan-600 dark:text-cyan-400 font-semibold">
+              {totalVaultChunks.toLocaleString()} chunks
+            </span>
+          </div>
         </div>
+
+        {/* Live Indexing Progress Bar */}
+        {indexProgress && (
+          <div className="mb-3 p-2.5 rounded-lg border border-cyan-500/60 bg-cyan-950/40 text-xs font-mono space-y-1.5 shadow-xs animate-in fade-in">
+            <div className="flex items-center justify-between text-[11px] font-bold text-cyan-300">
+              <span className="flex items-center space-x-1.5">
+                <RefreshCw className="w-3 h-3 text-cyan-400 animate-spin" />
+                <span>INDEXING VAULT...</span>
+              </span>
+              <span>
+                {indexProgress.indexed + indexProgress.skipped} / {indexProgress.total} files
+              </span>
+            </div>
+            <div className="w-full bg-zinc-800 h-1.5 rounded overflow-hidden">
+              <div
+                className="bg-cyan-400 h-full rounded transition-all duration-300"
+                style={{
+                  width: `${Math.min(100, Math.round(((indexProgress.indexed + indexProgress.skipped) / Math.max(1, indexProgress.total)) * 100))}%`
+                }}
+              ></div>
+            </div>
+            <div className="text-[10px] text-zinc-400 truncate" title={indexProgress.current}>
+              Translating: <span className="text-zinc-200">{indexProgress.current.split(/[\\/]/).pop()}</span>
+            </div>
+          </div>
+        )}
 
         {/* Directory Cards or Empty State */}
         <div className="space-y-2 mb-2.5">

@@ -58,6 +58,7 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
           w.label,
           w.is_enabled,
           w.created_at,
+          COALESCE((SELECT COUNT(1) FROM vector_embeddings ve WHERE ve.doc_path LIKE w.abs_path || '%'), 0) +
           COALESCE((SELECT COUNT(1) FROM chunks c JOIN documents d ON c.document_id = d.id WHERE d.folder_id = w.id), 0) as chunk_count
         FROM watched_folders w
         ORDER BY w.id ASC
@@ -150,6 +151,83 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
     return true;
   });
 
+  // Continuous SQLite Chat Timeline Handlers
+  ipcMain.handle('chat:get-history', (_event, conversationId: string = 'default') => {
+    try {
+      const rows = db.prepare(`
+        SELECT id, conversation_id, role, content, thoughts, tool_calls, citations, created_at
+        FROM chat_messages
+        WHERE conversation_id = ? AND is_archived = 0
+        ORDER BY created_at ASC
+      `).all(conversationId) as any[];
+
+      return rows.map((r) => ({
+        id: r.id,
+        conversationId: r.conversation_id,
+        role: r.role,
+        content: r.content,
+        thoughts: r.thoughts ? JSON.parse(r.thoughts) : undefined,
+        toolCalls: r.tool_calls ? JSON.parse(r.tool_calls) : undefined,
+        citations: r.citations ? JSON.parse(r.citations) : undefined,
+        createdAt: r.created_at
+      }));
+    } catch (err) {
+      console.error('[IPC] Failed to get chat history:', err);
+      return [];
+    }
+  });
+
+  ipcMain.handle('chat:save-message', (_event, msg: {
+    id: string;
+    conversationId?: string;
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+    thoughts?: any;
+    toolCalls?: any;
+    citations?: any;
+    createdAt?: number;
+  }) => {
+    try {
+      const now = msg.createdAt || Date.now();
+      const convId = msg.conversationId || 'default';
+      const stmt = db.prepare(`
+        INSERT INTO chat_messages (id, conversation_id, role, content, thoughts, tool_calls, citations, is_archived, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          content = excluded.content,
+          thoughts = excluded.thoughts,
+          tool_calls = excluded.tool_calls,
+          citations = excluded.citations
+      `);
+      stmt.run(
+        msg.id,
+        convId,
+        msg.role,
+        msg.content,
+        msg.thoughts ? JSON.stringify(msg.thoughts) : null,
+        msg.toolCalls ? JSON.stringify(msg.toolCalls) : null,
+        msg.citations ? JSON.stringify(msg.citations) : null,
+        now
+      );
+      return true;
+    } catch (err) {
+      console.error('[IPC] Failed to save chat message:', err);
+      return false;
+    }
+  });
+
+  ipcMain.handle('chat:clear-history', (_event, conversationId: string = 'default') => {
+    try {
+      db.prepare(`
+        UPDATE chat_messages SET is_archived = 1 WHERE conversation_id = ? AND is_archived = 0
+      `).run(conversationId);
+      return true;
+    } catch (err) {
+      console.error('[IPC] Failed to clear chat history:', err);
+      return false;
+    }
+  });
+
   // Search and Chat (Delegated to Off-Main-Thread Worker)
   ipcMain.handle('search:query', async (_event, payload: SearchQueryPayload): Promise<SearchHit[]> => {
     try {
@@ -198,11 +276,19 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
 
   ipcMain.handle('rag:index-folder', async (_event, folderPath: string): Promise<any> => {
     try {
-      return await WorkerManager.getInstance().indexFolder(folderPath, (prog) => {
+      const now = Date.now();
+      const insert = db.prepare(
+        'INSERT INTO watched_folders (abs_path, label, is_enabled, created_at) VALUES (?, ?, 1, ?) ON CONFLICT(abs_path) DO UPDATE SET is_enabled = 1'
+      );
+      insert.run(folderPath, folderPath.split(/[\\/]/).pop(), now);
+
+      const result = await WorkerManager.getInstance().indexFolder(folderPath, (prog) => {
         if (!mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('rag:index-progress', prog);
+          mainWindow.webContents.send('rag:index-progress', { ...prog, folderPath });
         }
       });
+      broadcastIndexStatus();
+      return result;
     } catch (err: any) {
       console.error('[IPC] rag:index-folder failed:', err);
       return { error: err.message };

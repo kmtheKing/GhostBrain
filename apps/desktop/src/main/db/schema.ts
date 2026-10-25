@@ -117,4 +117,28 @@ CREATE TABLE IF NOT EXISTS pairing_sessions (
   created_at       INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_pairing_sessions_exp ON pairing_sessions(expires_at);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id              TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL DEFAULT 'default',
+  role            TEXT NOT NULL CHECK (role IN ('user','assistant','system')),
+  content         TEXT NOT NULL,
+  thoughts        TEXT,
+  tool_calls      TEXT,
+  citations       TEXT,
+  is_archived     INTEGER NOT NULL DEFAULT 0 CHECK (is_archived IN (0,1)),
+  created_at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_conv ON chat_messages(conversation_id, is_archived, created_at);
+
+CREATE TABLE IF NOT EXISTS vector_embeddings (
+  chunk_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+  doc_path     TEXT NOT NULL,
+  heading_path TEXT,
+  text         TEXT NOT NULL,
+  embedding    BLOB NOT NULL,
+  dim          INTEGER NOT NULL DEFAULT 256,
+  created_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_vec_doc_path ON vector_embeddings(doc_path);
 `;

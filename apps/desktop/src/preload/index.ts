@@ -94,6 +94,16 @@ const api: GhostBrainApi = {
     const handler = (_: IpcRendererEvent, p: any): void => callback(p);
     ipcRenderer.on('rag:index-progress', handler);
     return () => ipcRenderer.removeListener('rag:index-progress', handler);
+  },
+
+  // Continuous Chat Timeline Persistence
+  getChatHistory: (conversationId?: string) => ipcRenderer.invoke('chat:get-history', conversationId),
+  saveChatMessage: (msg: any) => ipcRenderer.invoke('chat:save-message', msg),
+  clearChatHistory: (conversationId?: string) => ipcRenderer.invoke('chat:clear-history', conversationId),
+  onThoughtStep: (callback: (step: string) => void) => {
+    const handler = (_: IpcRendererEvent, step: string): void => callback(step);
+    ipcRenderer.on('rag:thought-step', handler);
+    return () => ipcRenderer.removeListener('rag:thought-step', handler);
   }
 };
 

@@ -166,10 +166,27 @@ export interface GhostBrainApi {
   onRagIndexProgress?: (callback: (progress: any) => void) => () => void;
 
 
+  // Continuous Chat Timeline Persistence
+  getChatHistory?: (conversationId?: string) => Promise<PersistedChatMessage[]>;
+  saveChatMessage?: (msg: PersistedChatMessage) => Promise<boolean>;
+  clearChatHistory?: (conversationId?: string) => Promise<boolean>;
+  onThoughtStep?: (callback: (step: string) => void) => () => void;
+
   // Window
   minimizeWindow: () => void;
   maximizeWindow: () => void;
   closeWindow: () => void;
   onMaximizeChange?: (callback: (isMaximized: boolean) => void) => () => void;
+}
+
+export interface PersistedChatMessage {
+  id: string;
+  conversationId?: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  thoughts?: any;
+  toolCalls?: any;
+  citations?: any;
+  createdAt?: number;
 }
 
