@@ -99,6 +99,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [isSettingUpTier, setIsSettingUpTier] = useState(false);
   const [tierProgress, setTierProgress] = useState(0);
 
+  // On-Demand Recommended Model Installer State
+  const [isInstallingModel, setIsInstallingModel] = useState(false);
+  const [modelInstallProgress, setModelInstallProgress] = useState<{
+    percent: number;
+    downloadedMB: number;
+    totalMB: number;
+    modelName: string;
+  } | null>(null);
+  const [modelInstallSuccess, setModelInstallSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (window.ghostbrain?.onModelInstallProgress) {
+      const unsub = window.ghostbrain.onModelInstallProgress((prog: any) => {
+        setModelInstallProgress(prog);
+      });
+      return () => unsub?.();
+    }
+  }, []);
+
+  const handleInstallRecommended = async () => {
+    setIsInstallingModel(true);
+    setModelInstallSuccess(null);
+    try {
+      if (window.ghostbrain?.installRecommendedModel) {
+        const res = await window.ghostbrain.installRecommendedModel();
+        if (res?.success) {
+          setModelInstallSuccess(res.modelName);
+        }
+      }
+    } catch (err) {
+      console.error('Model install error:', err);
+    } finally {
+      setIsInstallingModel(false);
+    }
+  };
+
   // Local LLM Model Management State
   const [modelFilter, setModelFilter] = useState<'all' | 'default' | 'custom'>('all');
   const [isAddingModel, setIsAddingModel] = useState(false);
@@ -930,6 +966,63 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <div className="text-sm font-bold text-slate-800 dark:text-zinc-200 mt-1">256-dim BLOB</div>
                         <div className="text-[10px] text-slate-400 mt-0.5">Matryoshka Truncation</div>
                       </div>
+                    </div>
+
+                    {/* On-Demand Recommended Model Installer */}
+                    <div className="p-4 rounded-xl border border-cyan-500/50 bg-cyan-950/20 space-y-3 font-mono">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                          <div className="text-xs font-bold text-cyan-400 flex items-center space-x-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                            <span>Recommended Local GGUF Model</span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            Optimal architecture: <strong className="text-zinc-200">{detectedTier === 'GPU_HIGH' ? 'Qwen2.5-3B-Instruct-Q4_K_M.gguf (1.98 GB)' : 'Llama-3.2-1B-Instruct-Q4_K_M.gguf (750 MB)'}</strong>
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={isInstallingModel}
+                          onClick={handleInstallRecommended}
+                          className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 text-white font-bold text-xs shadow-sm transition cursor-pointer flex items-center space-x-2 shrink-0 disabled:opacity-50"
+                        >
+                          {isInstallingModel ? (
+                            <>
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              <span>Installing Model...</span>
+                            </>
+                          ) : (
+                            <>
+                              <HardDrive className="w-3.5 h-3.5" />
+                              <span>Analyze Hardware &amp; Install Recommended Model</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      {/* Live Download Progress Bar */}
+                      {modelInstallProgress && (
+                        <div className="space-y-1.5 pt-2 border-t border-cyan-500/30">
+                          <div className="flex justify-between text-[11px] text-cyan-300 font-bold">
+                            <span>Downloading {modelInstallProgress.modelName}...</span>
+                            <span>{modelInstallProgress.percent}% ({modelInstallProgress.downloadedMB} / {modelInstallProgress.totalMB} MB)</span>
+                          </div>
+                          <div className="w-full bg-zinc-800 h-2 rounded-full overflow-hidden">
+                            <div
+                              className="bg-cyan-400 h-full rounded-full transition-all duration-300"
+                              style={{ width: `${modelInstallProgress.percent}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {modelInstallSuccess && (
+                        <div className="flex items-center space-x-2 text-xs text-emerald-400 font-bold animate-in fade-in">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                          <span>Model {modelInstallSuccess} installed in userData/models/ &amp; active for offline inference!</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Host Memory Overview */}

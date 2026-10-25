@@ -70,6 +70,12 @@ const api: GhostBrainApi = {
     ipcRenderer.on('llm:pull-progress', handler);
     return () => ipcRenderer.removeListener('llm:pull-progress', handler);
   },
+  installRecommendedModel: () => ipcRenderer.invoke('llm:install-recommended-model'),
+  onModelInstallProgress: (callback: (progress: any) => void) => {
+    const handler = (_: IpcRendererEvent, p: any) => callback(p);
+    ipcRenderer.on('llm:download-progress', handler);
+    return () => ipcRenderer.removeListener('llm:download-progress', handler);
+  },
   // System Telemetry & Native Dialogs
   getSystemTelemetry: (): Promise<SystemTelemetry> => ipcRenderer.invoke('system:telemetry'),
   selectModelFile: (): Promise<string | null> => ipcRenderer.invoke('dialog:selectModelFile'),

@@ -149,9 +149,11 @@ export interface GhostBrainApi {
   listPairedDevices: () => Promise<PairedDeviceRecord[]>;
   revokePairedDevice: (deviceId: string) => Promise<boolean>;
 
-  // Tier-based LLM Setup
+  // Tier-based LLM Setup & On-Demand Catalog Installer
   setupTier?: (tier: 'low' | 'balanced' | 'high') => Promise<{ success: boolean; model: string }>;
   onPullProgress?: (callback: (progress: any) => void) => () => void;
+  installRecommendedModel?: () => Promise<{ success: boolean; modelName: string; tier: string }>;
+  onModelInstallProgress?: (callback: (progress: { percent: number; downloadedMB: number; totalMB: number; modelName: string }) => void) => () => void;
   // System Telemetry & Native Dialogs
   getSystemTelemetry: () => Promise<SystemTelemetry>;
   selectModelFile: () => Promise<string | null>;

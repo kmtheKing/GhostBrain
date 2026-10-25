@@ -10,6 +10,117 @@ import { VectorStore } from '../db/vector-store.js';
 let activeProfile = null;
 let vectorStore = null;
 
+export function loadDesktopEnv() {
+  const envCandidates = [
+    path.join(process.cwd(), 'apps', 'desktop', '.env'),
+    path.join(process.cwd(), '.env'),
+    path.join(os.homedir(), '.ghostbrain', '.env')
+  ];
+  for (const envFile of envCandidates) {
+    if (fs.existsSync(envFile)) {
+      try {
+        const content = fs.readFileSync(envFile, 'utf-8');
+        for (const line of content.split('\n')) {
+          const trimmed = line.trim();
+          if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
+            const [k, ...v] = trimmed.split('=');
+            const key = k.trim();
+            const val = v.join('=').trim().replace(/^['"]|['"]$/g, '');
+            if (!process.env[key]) {
+              process.env[key] = val;
+            }
+          }
+        }
+      } catch {}
+    }
+  }
+}
+loadDesktopEnv();
+
+/**
+ * Stream OpenRouter Free Models fallback when local GGUF is missing or offline
+ */
+export async function streamOpenRouterFallback(apiKey, query, contextChunks, onToken, streamId, emitThought) {
+  if (emitThought) emitThought('🌐 Checking OpenRouter Free model fallback (meta-llama/llama-3.3-70b-instruct:free)...');
+
+  const contextText = contextChunks.map((h, i) => `[S${i + 1}] Document: ${h.docPath}\n${h.text}`).join('\n\n');
+  const systemPrompt = 'You are GhostBrain, a private offline second brain personal assistant. If local document excerpts are provided, answer citing [S1], [S2] etc. If no excerpts are provided, answer politely and thoroughly as GhostBrain Personal Assistant.';
+  const userContent = contextText ? `Context Excerpts:\n${contextText}\n\nUser Question: ${query}` : query;
+
+  const models = [
+    'meta-llama/llama-3.3-70b-instruct:free',
+    'google/gemma-3-27b-it:free',
+    'openrouter/free'
+  ];
+
+  for (const model of models) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+      const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://ghostbrain.local',
+          'X-Title': 'GhostBrain Desktop'
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userContent }
+          ],
+          stream: true
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!resp.ok || !resp.body) continue;
+
+      if (emitThought) emitThought(`🌐 Connected to OpenRouter (${model}), streaming synthesis...`);
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let receivedAny = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data: ') && trimmed !== 'data: [DONE]') {
+            try {
+              const parsed = JSON.parse(trimmed.slice(6));
+              const delta = parsed.choices?.[0]?.delta?.content || '';
+              if (delta) {
+                receivedAny = true;
+                onToken({ streamId, delta });
+              }
+            } catch {}
+          }
+        }
+      }
+
+      if (receivedAny) {
+        return true;
+      }
+    } catch {
+      // try next model
+    }
+  }
+
+  return false;
+}
+
 export async function initWorker(options = {}) {
   activeProfile = await profileHardware(options);
   const dbPath = options.dbPath || path.join(process.cwd(), 'brain.sqlite');

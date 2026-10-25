@@ -1,4 +1,12 @@
-import type { HardwareProfile } from './hardware-profiler.js';
+export function loadDesktopEnv(): void;
+export function streamOpenRouterFallback(
+  apiKey: string,
+  query: string,
+  contextChunks: any[],
+  onToken: (tok: { streamId: string; delta: string }) => void,
+  streamId: string,
+  emitThought?: ((step: string) => void) | null
+): Promise<boolean>;
 
 export function initWorker(options?: any): Promise<{ activeProfile: HardwareProfile; dbPath: string }>;
 

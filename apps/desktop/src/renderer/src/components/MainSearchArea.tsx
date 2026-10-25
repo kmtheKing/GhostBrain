@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Search, FileText, Terminal, X, Sparkles, Database, Check, Copy, ArrowRight } from 'lucide-react';
+import { MessageSquare, Search, FileText, Terminal, X, Sparkles, Database, Check, Copy, ArrowRight, Cpu } from 'lucide-react';
 import type { SearchHit, ChatTokenPayload, ChatDonePayload } from '@ghostbrain/shared-types';
 
 interface RetrievedChunk {
@@ -341,6 +341,26 @@ export const MainSearchArea: React.FC<MainSearchAreaProps> = ({ onCitationClick 
               <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 leading-relaxed">
                 Search your local files, retrieve code references, or ask questions with citations. Everything runs 100% on your device with zero cloud telemetry.
               </p>
+            </div>
+
+            {/* On-Demand Catalog Onboarding Notice */}
+            <div className="w-full p-3.5 rounded-xl border border-cyan-500/40 bg-cyan-950/25 text-left font-mono text-xs space-y-2 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-cyan-300 flex items-center space-x-1.5">
+                  <Cpu className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>On-Demand Local Model Catalog</span>
+                </span>
+                <span className="text-[10px] text-cyan-400 bg-cyan-950/80 border border-cyan-800/80 px-1.5 py-0.5 rounded font-semibold">
+                  OpenRouter Free Fallback Active
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-300 dark:text-zinc-400 leading-relaxed">
+                Zero bloated weights are bundled by default. Fast hybrid SQLite vector search &amp; OpenRouter free recovery are ready. To install the optimal local offline model for your hardware:
+              </p>
+              <div className="pt-1 flex items-center justify-between text-[10px] text-slate-400 font-bold border-t border-cyan-500/20">
+                <span>Navigate to: Settings &rarr; Local LLM &amp; Hardware</span>
+                <span className="text-cyan-400 font-semibold">[Install Recommended Model]</span>
+              </div>
             </div>
 
             {/* Quick Starter Chips */}

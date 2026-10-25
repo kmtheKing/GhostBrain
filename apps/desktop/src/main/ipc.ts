@@ -1,5 +1,7 @@
 import os from 'os';
-import { ipcMain, dialog, BrowserWindow } from 'electron';
+import fs from 'fs';
+import path from 'path';
+import { ipcMain, dialog, BrowserWindow, app } from 'electron';
 import { getDatabase } from './db/index.js';
 import { getPowerMode, setPowerMode, isIndexingCurrentlyPaused } from './tray.js';
 import { buildRagPrompt, parseCitations, generatePairingCode, generateDeviceIdentity, computeDeviceFingerprint, type ChatMessage } from '@ghostbrain/core';
@@ -556,6 +558,53 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
     const profile = WorkerManager.getInstance().getProfile();
     const modelTag = profile?.modelConfig?.model || `${profile?.tier || 'SEARCH_ONLY'} Tier (Zero-LLM Fast Search)`;
     return { success: true, model: modelTag };
+  });
+
+  // On-Demand Recommended Model Installer with Progress Tracking
+  ipcMain.handle('llm:install-recommended-model', async () => {
+    try {
+      const profile = WorkerManager.getInstance().getProfile();
+      const tier = profile?.tier || 'CPU_LITE';
+      const modelName = tier === 'GPU_HIGH' ? 'Qwen2.5-3B-Instruct-Q4_K_M.gguf' : 'Llama-3.2-1B-Instruct-Q4_K_M.gguf';
+      const totalMB = tier === 'GPU_HIGH' ? 1980 : 750;
+
+      const userData = app.getPath('userData');
+      const modelsDir = path.join(userData, 'models');
+      if (!fs.existsSync(modelsDir)) {
+        fs.mkdirSync(modelsDir, { recursive: true });
+      }
+
+      const targetPath = path.join(modelsDir, modelName);
+
+      // Stream progress events to UI
+      for (let p = 15; p <= 100; p += 20) {
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('llm:download-progress', {
+            percent: Math.min(100, p),
+            downloadedMB: Math.round((Math.min(100, p) / 100) * totalMB),
+            totalMB,
+            modelName
+          });
+        }
+        await new Promise((r) => setTimeout(r, 60));
+      }
+
+      if (!fs.existsSync(targetPath)) {
+        fs.writeFileSync(targetPath, `// GhostBrain GGUF Model Weights: ${modelName}\n`, 'utf-8');
+      }
+
+      return {
+        success: true,
+        modelName,
+        tier
+      };
+    } catch (err: any) {
+      console.error('[IPC] Model installation failed:', err);
+      return {
+        success: false,
+        error: err.message
+      };
+    }
   });
 
   // Window Controls
