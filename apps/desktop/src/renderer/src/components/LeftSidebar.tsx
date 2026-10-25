@@ -139,61 +139,33 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             </div>
           </div>
 
-          {/* ACTIVE LOCAL LLM STATUS CARD (Real Active vs Offline State) */}
+          {/* ACTIVE HARDWARE PROFILE BADGE (Silent 3-Tier Auto-Switcher) */}
           <div
             onClick={onOpenSettings}
-            className={`col-span-2 p-2.5 rounded-lg bg-white dark:bg-zinc-900/80 border transition-all ${
-              telemetry.isModelOnline
-                ? 'border-slate-200 dark:border-zinc-800/90 shadow-xs'
-                : 'border-amber-200/80 dark:border-amber-900/40 hover:border-amber-400 dark:hover:border-amber-700 cursor-pointer shadow-xs hover:shadow-sm'
-            }`}
+            className="col-span-2 p-2.5 rounded-lg bg-white dark:bg-zinc-900/80 border border-slate-200 dark:border-zinc-800/90 shadow-xs hover:border-cyan-500/50 cursor-pointer transition-all"
           >
             <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wide">
-              <span className="text-slate-500 dark:text-zinc-400 font-mono">ACTIVE LOCAL AI</span>
-              {telemetry.isModelOnline ? (
-                <span className="flex items-center space-x-1 text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.2 rounded border border-emerald-200 dark:border-emerald-800">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  <span>ONLINE</span>
-                </span>
-              ) : (
-                <span className="flex items-center space-x-1 text-amber-600 dark:text-amber-400 font-semibold bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-200 dark:border-amber-800">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                  <span>OFFLINE</span>
-                </span>
-              )}
+              <span className="text-slate-500 dark:text-zinc-400 font-mono">HARDWARE PROFILE</span>
+              <span className="flex items-center space-x-1 text-cyan-600 dark:text-cyan-400 font-semibold bg-cyan-50 dark:bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-200 dark:border-cyan-800">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse"></span>
+                <span>{telemetry.installedModels?.[0]?.includes('GPU') ? 'GPU_HIGH' : telemetry.installedModels?.[0]?.includes('CPU') ? 'CPU_LITE' : 'ACTIVE TIER'}</span>
+              </span>
             </div>
 
-            {telemetry.isModelOnline ? (
-              <div className="mt-1.5 space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-cyan-700 dark:text-cyan-300 font-mono">
-                    {telemetry.activeModel}
-                  </span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 font-mono">
-                    {telemetry.backend}
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-500 dark:text-zinc-400 flex items-center space-x-1.5">
-                  <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                  <span>Ready for cited local streaming</span>
-                </div>
+            <div className="mt-1.5 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 dark:text-zinc-200 font-mono truncate max-w-[190px]" title={telemetry.installedModels?.[0] || 'Unified RAG'}>
+                  {telemetry.installedModels?.[0] || 'node-llama-cpp + 256-dim BLOB'}
+                </span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700 font-mono">
+                  Worker
+                </span>
               </div>
-            ) : (
-              <div className="mt-1.5 space-y-1">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-1.5 text-xs text-slate-700 dark:text-zinc-300 font-mono font-medium">
-                    <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                    <span>No Local Model Active</span>
-                  </div>
-                  <span className="text-[9px] text-amber-600 dark:text-amber-400 font-mono font-semibold underline">
-                    Setup &rarr;
-                  </span>
-                </div>
-                <p className="text-[10px] text-slate-400 dark:text-zinc-500 leading-normal">
-                  Click to select an integrated AI performance tier in Settings.
-                </p>
+              <div className="text-[10px] text-slate-500 dark:text-zinc-400 flex items-center space-x-1.5">
+                <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                <span>Auto-selected for your hardware (&lt;50ms RRF)</span>
               </div>
-            )}
+            </div>
           </div>
         </div>
       </section>

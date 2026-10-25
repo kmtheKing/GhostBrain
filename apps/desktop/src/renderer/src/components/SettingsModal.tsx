@@ -61,63 +61,7 @@ interface CustomModel {
   isCustom: true;
 }
 
-interface DefaultModel {
-  name: string;
-  backend: string;
-  quant: string;
-  context: string;
-  desc: string;
-  ramEstimate: string;
-  family: string;
-}
 
-const DEFAULT_MODELS: DefaultModel[] = [
-  {
-    name: 'Gemma 4 (2B Instruction)',
-    backend: 'llama.cpp / Ollama',
-    quant: 'Q4_K_M',
-    context: '8,192 tokens',
-    desc: 'Google DeepMind lightweight model. Ultra-fast file extraction & document summarization with low battery consumption.',
-    ramEstimate: '2.4 GB',
-    family: 'Google DeepMind'
-  },
-  {
-    name: 'Qwen 2.5 (7B Coder & Reasoning)',
-    backend: 'llama.cpp / Ollama',
-    quant: 'Q4_K_M',
-    context: '32,768 tokens',
-    desc: 'Alibaba Cloud premier reasoning & code engine. High-capacity 32K context with structured JSON and tool calling.',
-    ramEstimate: '5.4 GB',
-    family: 'Alibaba Cloud'
-  },
-  {
-    name: 'DeepSeek-R1-7B',
-    backend: 'llama-server',
-    quant: 'Q4_K_M',
-    context: '16,384 tokens',
-    desc: 'Chain-of-thought mathematical reasoning and rigorous step-by-step logic solver.',
-    ramEstimate: '5.2 GB',
-    family: 'DeepSeek'
-  },
-  {
-    name: 'Mistral-7B-Instruct',
-    backend: 'llama.cpp',
-    quant: 'Q4_K_M',
-    context: '16,384 tokens',
-    desc: 'High context window ideal for deep document synthesis and cross-file research.',
-    ramEstimate: '4.8 GB',
-    family: 'Mistral AI'
-  },
-  {
-    name: 'Llama-3.2-3B',
-    backend: 'Ollama',
-    quant: 'Q4_K_S',
-    context: '8,192 tokens',
-    desc: 'Balanced reasoning and instruction-following for general desktop assistance.',
-    ramEstimate: '3.1 GB',
-    family: 'Meta / Llama'
-  }
-];
 
 interface ConnectedDevice {
   id: string;
@@ -913,338 +857,141 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </section>
             )}
 
-            {/* 2. LOCAL LLM & HARDWARE */}
+            {/* 2. SILENT HARDWARE PROFILE & WORKER TELEMETRY (READ-ONLY) */}
             {activeTab === 'llm' && (() => {
-              const freeHostRamMB = Math.max(1024, (telemetry?.hostTotalRamMB || 16384) - (telemetry?.hostUsedRamMB || 6144));
-              const freeHostRamGB = Number((freeHostRamMB / 1024).toFixed(1));
-              const maxSliderGB = Math.max(2.0, Math.min(32.0, freeHostRamGB));
+              const totalRamGB = ((telemetry?.hostTotalRamMB || 16384) / 1024).toFixed(1);
+              const usedRamGB = ((telemetry?.hostUsedRamMB || 6144) / 1024).toFixed(1);
+              const freeRamGB = Math.max(0, Number(totalRamGB) - Number(usedRamGB)).toFixed(1);
 
-              const TIERS = [
-                {
-                  id: 'low',
-                  name: 'Low Performance',
-                  badge: 'Eco / Lightweight',
-                  minRam: 2.0,
-                  tag: 'gemma2:2b',
-                  desc: 'Fast document search, basic summaries, minimal battery drain. Optimized for 4GB–8GB laptops without dedicated GPU.',
-                  fit: 'Low-Spec Laptops & PCs'
-                },
-                {
-                  id: 'balanced',
-                  name: 'Balanced Performance',
-                  badge: 'Standard (Recommended)',
-                  minRam: 3.5,
-                  tag: 'llama3.2:3b',
-                  desc: 'High-accuracy reasoning, cross-document analysis, structured data insights. Recommended for general daily workflows.',
-                  fit: 'Standard 8GB–16GB Desktops'
-                },
-                {
-                  id: 'high',
-                  name: 'Full Power',
-                  badge: 'Deep Intelligence',
-                  minRam: 5.5,
-                  tag: 'qwen2.5:7b',
-                  desc: 'Complex code synthesis, deep multi-step logic, long research papers. For high-spec multi-core PCs.',
-                  fit: 'High-Spec Workstations'
-                }
-              ];
-
-              const currentTierObj = TIERS.find(t => t.id === selectedTier) || TIERS[1];
-              const isBudgetSufficient = ramBudgetGB >= currentTierObj.minRam;
+              const modelName = telemetry?.installedModels?.[0] || 'node-llama-cpp + 256-dim BLOB';
+              const detectedTier = modelName.includes('Qwen') || modelName.includes('GPU')
+                ? 'GPU_HIGH'
+                : modelName.includes('Llama') || Number(totalRamGB) >= 8
+                ? 'CPU_LITE'
+                : 'SEARCH_ONLY';
 
               return (
-              <section className="space-y-6 animate-in fade-in pb-12 select-none">
-                {/* Header */}
-                <div className="pb-4 border-b border-slate-200 dark:border-zinc-800">
-                  <h2 className="text-base font-bold text-slate-900 dark:text-zinc-100 flex items-center space-x-2">
-                    <Cpu className="w-5 h-5 text-cyan-500" />
-                    <span>Local AI Model &amp; System Memory Allocation</span>
-                  </h2>
-                  <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
-                    Configure your local AI engine by performance level. The app automatically ensures your hardware specifications satisfy the selected tier before downloading.
-                  </p>
-                </div>
-
-                {/* Section 1: Simplified Live Memory Overview */}
-                <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 space-y-4 shadow-xs">
-                  <div className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-zinc-100 flex items-center space-x-2">
-                    <HardDrive className="w-4 h-4 text-cyan-500" />
-                    <span>Real-Time Host Memory Overview</span>
-                  </div>
-
-                  {/* 2 Clear Metric Boxes */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {/* Box 1: App Memory in Use */}
-                    <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-800 flex items-center justify-between">
-                      <div>
-                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-bold">
-                          GhostBrain App Memory In Use
-                        </div>
-                        <div className="text-lg font-bold text-slate-800 dark:text-zinc-100 mt-0.5 font-mono">
-                          {telemetry?.hostRamMB || 180} MB
-                        </div>
-                        <div className="text-[10px] text-slate-400 dark:text-zinc-500">
-                          Live daemon footprint
-                        </div>
-                      </div>
-                      <Activity className="w-5 h-5 text-cyan-500 shrink-0" />
-                    </div>
-
-                    {/* Box 2: Available Free Host RAM */}
-                    <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-800 flex items-center justify-between">
-                      <div>
-                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-bold">
-                          Available Free Host RAM
-                        </div>
-                        <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400 mt-0.5 font-mono">
-                          {freeHostRamGB} GB Free
-                        </div>
-                        <div className="text-[10px] text-slate-400 dark:text-zinc-500">
-                          Ready for local AI allocation
-                        </div>
-                      </div>
-                      <HardDrive className="w-5 h-5 text-emerald-500 shrink-0" />
-                    </div>
-                  </div>
-
-                  {/* Memory Allocation Slider */}
-                  <div className="pt-2 space-y-2">
-                    <div className="flex items-center justify-between text-xs font-mono">
-                      <span className="font-bold text-slate-700 dark:text-zinc-300">
-                        Permitted GhostBrain RAM Budget:
-                      </span>
-                      <span className="font-bold text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-950/60 px-3 py-1 rounded-lg border border-cyan-200 dark:border-cyan-800">
-                        {ramBudgetGB.toFixed(1)} GB of {freeHostRamGB} GB Free
-                      </span>
-                    </div>
-
-                    <input
-                      type="range"
-                      min="1.0"
-                      max={maxSliderGB}
-                      step="0.5"
-                      value={ramBudgetGB}
-                      onChange={(e) => setRamBudgetGB(Number(e.target.value))}
-                      className="w-full accent-cyan-600 cursor-pointer h-2.5 bg-slate-100 dark:bg-zinc-800 rounded-lg transition"
-                    />
-
-                    <div className="flex justify-between text-[10px] text-slate-400 dark:text-zinc-500 font-mono">
-                      <span>1.0 GB (Minimum)</span>
-                      <span>2.5 GB</span>
-                      <span>4.0 GB</span>
-                      <span>{maxSliderGB.toFixed(1)} GB (Safe Free Limit)</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section 2: Integrated Model Choices (3 Clean Performance Tiers) */}
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-zinc-100 font-mono">
-                        GhostBrain Integrated AI Engines ({TIERS.length} Performance Levels)
-                      </h3>
-                      <span className="text-[10px] text-cyan-600 dark:text-cyan-400 font-mono bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-200 dark:border-cyan-800">
-                        1-Click Ready
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
-                      Choose the performance level tailored to your computer. No technical model names or token counts required.
+                <section className="space-y-6 animate-in fade-in pb-12 select-none">
+                  {/* Header */}
+                  <div className="pb-4 border-b border-slate-200 dark:border-zinc-800">
+                    <h2 className="text-base font-bold text-slate-900 dark:text-zinc-100 flex items-center space-x-2">
+                      <Cpu className="w-5 h-5 text-cyan-500" />
+                      <span>Active Hardware Profile (Silent Auto-Switcher)</span>
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
+                      GhostBrain silently profiles your machine at boot and assigns compute tiers automatically. Zero manual Ollama downloads or model-picker friction.
                     </p>
                   </div>
 
-                  {/* 3 Tier Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {TIERS.map((tier) => {
-                      const isSelected = selectedTier === tier.id;
-                      const satisfiesBudget = ramBudgetGB >= tier.minRam;
-
-                      return (
-                        <div
-                          key={tier.id}
-                          onClick={() => setSelectedTier(tier.id as any)}
-                          className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
-                            isSelected
-                              ? 'border-cyan-500 bg-white dark:bg-zinc-900 ring-2 ring-cyan-500/70 shadow-sm'
-                              : 'border-slate-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/40 hover:border-slate-300 dark:hover:border-zinc-700'
-                          }`}
-                        >
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold text-slate-900 dark:text-zinc-100">
-                                {tier.name}
-                              </span>
-                              <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
-                                satisfiesBudget
-                                  ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
-                                  : 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
-                              }`}>
-                                Min {tier.minRam} GB RAM
-                              </span>
-                            </div>
-
-                            <div className="text-[10px] text-cyan-600 dark:text-cyan-400 font-mono font-semibold">
-                              {tier.badge} • {tier.fit}
-                            </div>
-
-                            <p className="text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed">
-                              {tier.desc}
-                            </p>
-                          </div>
-
-                          <div className="pt-3 mt-3 border-t border-slate-100 dark:border-zinc-800/80 flex items-center justify-between text-[10px] font-mono">
-                            {satisfiesBudget ? (
-                              <span className="flex items-center space-x-1 text-emerald-600 dark:text-emerald-400 font-semibold">
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                <span>Hardware Supported</span>
-                              </span>
-                            ) : (
-                              <span className="flex items-center space-x-1 text-amber-600 dark:text-amber-400 font-semibold">
-                                <AlertCircle className="w-3.5 h-3.5" />
-                                <span>Requires {tier.minRam} GB Budget</span>
-                              </span>
-                            )}
-
-                            {isSelected && (
-                              <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse"></span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Section 3: Smart Hardware Guardrail & 1-Click Action */}
-                  <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 space-y-3 shadow-xs">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  {/* Active Hardware Profile Badge & Specifications */}
+                  <div className="p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 space-y-6 shadow-xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-100 dark:border-zinc-800/80">
                       <div>
-                        <div className="text-xs font-bold text-slate-900 dark:text-zinc-100 flex items-center space-x-2">
-                          <span>Selected Tier:</span>
-                          <strong className="text-cyan-600 dark:text-cyan-400 font-mono">{currentTierObj.name}</strong>
+                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-mono font-bold tracking-wider">
+                          Active Compute Tier
                         </div>
-                        <div className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
-                          {isBudgetSufficient ? (
-                            <span className="text-emerald-600 dark:text-emerald-400 flex items-center space-x-1 font-medium">
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>Specifications validated! Your {ramBudgetGB.toFixed(1)} GB allocation satisfies the {currentTierObj.minRam} GB requirement.</span>
-                            </span>
-                          ) : (
-                            <span className="text-amber-600 dark:text-amber-400 flex items-center space-x-1 font-medium">
-                              <AlertCircle className="w-3.5 h-3.5" />
-                              <span>Insufficient RAM budget. Move the slider up to at least {currentTierObj.minRam} GB to unlock this tier.</span>
-                            </span>
-                          )}
+                        <div className="text-xl font-bold text-slate-900 dark:text-zinc-100 font-mono mt-0.5 flex items-center space-x-2">
+                          <span>{detectedTier}</span>
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        </div>
+                        <div className="text-xs text-cyan-600 dark:text-cyan-400 font-mono mt-1">
+                          {detectedTier === 'GPU_HIGH' && 'Discrete GPU Acceleration (CUDA / Vulkan / Metal)'}
+                          {detectedTier === 'CPU_LITE' && 'Multi-Threaded CPU Engine (Host RAM >= 8GB)'}
+                          {detectedTier === 'SEARCH_ONLY' && 'Zero-LLM Instant Fallback (<50ms RRF Citation)'}
                         </div>
                       </div>
 
-                      {/* 1-Click Action Button */}
+                      <div className="flex items-center space-x-2 bg-slate-50 dark:bg-zinc-800/60 p-2.5 rounded-xl border border-slate-200 dark:border-zinc-700/60 font-mono text-xs">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                        <span className="text-slate-700 dark:text-zinc-300 font-bold">100% Offline Worker</span>
+                      </div>
+                    </div>
+
+                    {/* Specification Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 font-mono text-xs">
+                      <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-800">
+                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-bold">Assigned Model</div>
+                        <div className="text-sm font-bold text-slate-800 dark:text-zinc-200 mt-1 truncate" title={modelName}>
+                          {modelName}
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">Quant: Q4_K_M GGUF</div>
+                      </div>
+
+                      <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-800">
+                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-bold">Context &amp; Chunks</div>
+                        <div className="text-sm font-bold text-slate-800 dark:text-zinc-200 mt-1">
+                          {detectedTier === 'GPU_HIGH' ? '4096 ctx / Top-5' : detectedTier === 'CPU_LITE' ? '2048 ctx / Top-2' : 'Top-3 (<50ms)'}
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">RRF Rank Fusion: k=60</div>
+                      </div>
+
+                      <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-200 dark:border-zinc-800">
+                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 uppercase font-bold">Embedding Math</div>
+                        <div className="text-sm font-bold text-slate-800 dark:text-zinc-200 mt-1">256-dim BLOB</div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">Matryoshka Truncation</div>
+                      </div>
+                    </div>
+
+                    {/* Host Memory Overview */}
+                    <div className="p-4 rounded-xl bg-slate-50/70 dark:bg-zinc-800/30 border border-slate-200/80 dark:border-zinc-800 space-y-3 font-mono">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-bold text-slate-700 dark:text-zinc-300">Live Host RAM Usage:</span>
+                        <span className="text-slate-600 dark:text-zinc-400">
+                          {usedRamGB} GB Used / {totalRamGB} GB Total ({freeRamGB} GB Free)
+                        </span>
+                      </div>
+
+                      <div className="w-full bg-slate-200 dark:bg-zinc-800 h-2 rounded-full overflow-hidden">
+                        <div
+                          className="bg-cyan-500 h-full rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min(100, Math.round((Number(usedRamGB) / Number(totalRamGB)) * 100))}%` }}
+                        />
+                      </div>
+
+                      <div className="flex justify-between text-[10px] text-slate-400 dark:text-zinc-500">
+                        <span>CPU: {telemetry?.cpuModel || 'Host System'}</span>
+                        <span>Daemon RSS: {telemetry?.hostRamMB || 180} MB</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Power User Custom Model File Loader */}
+                  <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 space-y-2.5 shadow-xs">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-xs font-bold text-slate-800 dark:text-zinc-200 font-mono">
+                          Override with Custom .gguf Model
+                        </span>
+                        <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                          Power users can point GhostBrain to any custom GGUF weights on local storage.
+                        </p>
+                      </div>
+
                       <button
                         type="button"
-                        disabled={!isBudgetSufficient || isSettingUpTier}
                         onClick={async () => {
-                          if (!isBudgetSufficient) return;
-                          setIsSettingUpTier(true);
-                          setTierProgress(25);
-                          try {
-                            if (window.ghostbrain?.setupTier) {
-                              await window.ghostbrain.setupTier(selectedTier);
+                          if (window.ghostbrain?.selectModelFile) {
+                            try {
+                              const selected = await window.ghostbrain.selectModelFile();
+                              if (selected) {
+                                const base = selected.split(/[/\\]/).pop()?.replace(/\.[^/.]+$/, '') || 'Custom Model';
+                                setSelectedModel(`Custom: ${base}`);
+                                localStorage.setItem('ghostbrain_custom_path', selected);
+                              }
+                            } catch (err) {
+                              console.error('File select error:', err);
                             }
-                            setTierProgress(100);
-                            setSelectedModel(`${currentTierObj.name} Engine`);
-                            localStorage.setItem('ghostbrain_active_tier', selectedTier);
-                          } catch (err) {
-                            console.error('Setup tier error:', err);
-                          } finally {
-                            setTimeout(() => {
-                              setIsSettingUpTier(false);
-                              setTierProgress(0);
-                            }, 800);
                           }
                         }}
-                        className={`px-5 py-2.5 rounded-xl font-bold font-mono text-xs transition cursor-pointer flex items-center justify-center space-x-2 shrink-0 ${
-                          !isBudgetSufficient
-                            ? 'bg-slate-100 dark:bg-zinc-800 text-slate-400 dark:text-zinc-600 cursor-not-allowed border border-slate-200 dark:border-zinc-700'
-                            : isSettingUpTier
-                            ? 'bg-cyan-600 text-white shadow-xs'
-                            : selectedModel.includes(currentTierObj.name)
-                            ? 'bg-emerald-600 text-white shadow-xs'
-                            : 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-md shadow-cyan-600/20'
-                        }`}
+                        className="px-3.5 py-1.5 rounded-xl border border-slate-300 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 text-xs font-mono font-semibold hover:border-cyan-500 transition flex items-center space-x-1.5 cursor-pointer shrink-0"
                       >
-                        {isSettingUpTier ? (
-                          <span>Installing Engine ({tierProgress}%)...</span>
-                        ) : selectedModel.includes(currentTierObj.name) ? (
-                          <>
-                            <CheckCircle2 className="w-4 h-4" />
-                            <span>Active Engine Connected</span>
-                          </>
-                        ) : isBudgetSufficient ? (
-                          <>
-                            <Check className="w-4 h-4" />
-                            <span>Download &amp; Setup ({currentTierObj.name})</span>
-                          </>
-                        ) : (
-                          <>
-                            <AlertCircle className="w-4 h-4" />
-                            <span>Requires {currentTierObj.minRam} GB Budget</span>
-                          </>
-                        )}
+                        <FolderOpen className="w-3.5 h-3.5 text-cyan-500" />
+                        <span>Browse .gguf File...</span>
                       </button>
                     </div>
-
-                    {isSettingUpTier && (
-                      <div className="space-y-1 pt-1">
-                        <div className="w-full bg-slate-100 dark:bg-zinc-800 h-2 rounded-full overflow-hidden">
-                          <div
-                            className="bg-cyan-500 h-full rounded-full transition-all duration-300"
-                            style={{ width: `${tierProgress}%` }}
-                          />
-                        </div>
-                        <div className="text-[10px] text-slate-400 dark:text-zinc-500 font-mono text-right">
-                          Configuring local sidecar... {tierProgress}%
-                        </div>
-                      </div>
-                    )}
                   </div>
-                </div>
-
-                {/* Section 4: Power User Custom Model File Loader */}
-                <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 space-y-2.5 shadow-xs">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-xs font-bold text-slate-800 dark:text-zinc-200 font-mono">
-                        Have Your Own Model on Disk?
-                      </span>
-                      <p className="text-[11px] text-slate-500 dark:text-zinc-400">
-                        Power users can load any custom `.gguf` file directly from local storage.
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (window.ghostbrain?.selectModelFile) {
-                          try {
-                            const selected = await window.ghostbrain.selectModelFile();
-                            if (selected) {
-                              const base = selected.split(/[/\\]/).pop()?.replace(/\.[^/.]+$/, '') || 'Custom Model';
-                              setSelectedModel(`Custom: ${base}`);
-                              localStorage.setItem('ghostbrain_custom_path', selected);
-                            }
-                          } catch (err) {
-                            console.error('File select error:', err);
-                          }
-                        }
-                      }}
-                      className="px-3.5 py-1.5 rounded-xl border border-slate-300 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 text-xs font-mono font-semibold hover:border-cyan-500 transition flex items-center space-x-1.5 cursor-pointer shrink-0"
-                    >
-                      <FolderOpen className="w-3.5 h-3.5 text-cyan-500" />
-                      <span>Browse .gguf File...</span>
-                    </button>
-                  </div>
-                </div>
-              </section>
-            );
+                </section>
+              );
             })()}
 
             {/* 3. HYBRID RRF SEARCH TUNING */}

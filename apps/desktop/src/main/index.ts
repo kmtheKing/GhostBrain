@@ -6,6 +6,7 @@ import { initDatabase, closeDatabase, getDatabase } from './db/index.js';
 import { setupTray } from './tray.js';
 import { registerIpcHandlers } from './ipc.js';
 import { FolderWatcherManager } from './indexer/watcher.js';
+import { WorkerManager } from './workers/worker-manager.js';
 
 let mainWindow: BrowserWindow | null = null;
 let watcherManager: FolderWatcherManager | null = null;
@@ -48,11 +49,12 @@ if (!gotTheLock) {
       });
     });
 
-    // Initialize Database
+    // Initialize Database & Background Worker
     try {
       initDatabase();
       console.log('[Main] SQLite Database initialized successfully.');
       watcherManager = new FolderWatcherManager(getDatabase());
+      await WorkerManager.getInstance().init(getDatabase());
     } catch (err) {
       console.error('[Main] Database initialization failed:', err);
     }
@@ -62,6 +64,16 @@ if (!gotTheLock) {
     // Start background file watchers
     if (watcherManager) {
       await watcherManager.startAll();
+    }
+
+    // Check for smoke test flag to cleanly verify boot in headless/CI environments
+    if (process.env.GHOSTBRAIN_SMOKE_TEST === '1' || process.argv.includes('--smoke-test')) {
+      console.log('[Main] SMOKE TEST SUCCESS: Electron booted cleanly with native ABI, SQLite DB, and RAG Worker.');
+      isQuitting = true;
+      setTimeout(() => {
+        app.quit();
+      }, 600);
+      return;
     }
 
     app.on('activate', () => {

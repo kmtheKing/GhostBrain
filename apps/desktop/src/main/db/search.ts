@@ -1,3 +1,8 @@
+/**
+ * @deprecated Legacy search implementation.
+ * Unified search now operates off-main-thread via `apps/desktop/src/main/db/vector-store.js`
+ * and `apps/desktop/src/main/workers/rag-worker.js`.
+ */
 import type { Database as DatabaseInstance } from 'better-sqlite3-multiple-ciphers';
 import type { SearchHit, SearchQueryPayload } from '@ghostbrain/shared-types';
 import { sanitizeFtsQuery } from '@ghostbrain/core';

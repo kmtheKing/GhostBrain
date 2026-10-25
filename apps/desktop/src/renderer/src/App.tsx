@@ -266,7 +266,20 @@ export function App() {
       </div>
 
       {/* Bottom Status Bar */}
-      <StatusBar totalChunks={totalChunks} vectorModel="all-MiniLM-L6-v2" latencyMs={12} />
+      <StatusBar
+        totalChunks={totalChunks}
+        vectorModel="all-MiniLM-L6-v2"
+        latencyMs={12}
+        hardwareTier={
+          telemetry.installedModels?.[0]?.includes('GPU')
+            ? 'GPU_HIGH'
+            : telemetry.installedModels?.[0]?.includes('CPU') || (telemetry.hostTotalRamMB && telemetry.hostTotalRamMB >= 8192)
+            ? 'CPU_LITE'
+            : 'SEARCH_ONLY'
+        }
+        hostRamUsedMB={telemetry.hostUsedRamMB}
+        hostRamTotalMB={telemetry.hostTotalRamMB}
+      />
 
       {/* Settings Modal (Full Screen Workstation Dialog) */}
       <SettingsModal

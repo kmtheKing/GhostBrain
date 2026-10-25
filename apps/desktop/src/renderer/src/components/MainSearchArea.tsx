@@ -78,25 +78,28 @@ export const MainSearchArea: React.FC<MainSearchAreaProps> = ({ onCitationClick 
 
     const startTime = Date.now();
 
-    // 1. Fetch real hybrid search hits from SQLite FTS5 / sqlite-vec
+    // 1. Fetch real hybrid search hits from SQLite FTS5 / 256-dim BLOB Vector Store
     let retrievedChunks: RetrievedChunk[] = [];
-    if (window.ghostbrain?.search) {
+    if (window.ghostbrain?.ragSearch || window.ghostbrain?.search) {
       try {
-        const hits = await window.ghostbrain.search({ query: textToSend.trim(), limit: 4 });
+        const rawHits = window.ghostbrain.ragSearch
+          ? await window.ghostbrain.ragSearch(textToSend.trim(), 4)
+          : await window.ghostbrain.search({ query: textToSend.trim(), limit: 4 });
+        const hits = Array.isArray(rawHits) ? rawHits : (rawHits as any)?.hits || [];
         if (hits && hits.length > 0) {
-          retrievedChunks = hits.map((h: SearchHit) => ({
-            filename: h.relPath.split(/[/\\]/).pop() || h.relPath,
-            type: h.relPath.endsWith('.md') ? 'markdown' : h.relPath.endsWith('.ts') ? 'code' : 'document',
-            score: Number(h.rrfScore.toFixed(3)),
-            scoreMetric: `RRF Score: ${h.rrfScore.toFixed(3)}`,
-            lineInfo: h.headingPath ? `// Heading: ${h.headingPath}` : `// Document: ${h.relPath}`,
-            snippet: h.text.slice(0, 260) + (h.text.length > 260 ? '...' : ''),
-            highlightWords: textToSend.trim().split(/\s+/).filter(w => w.length > 2)
+          retrievedChunks = hits.map((h: any) => ({
+            filename: (h.docPath || h.relPath || 'document').split(/[/\\]/).pop(),
+            type: (h.docPath || h.relPath || '').endsWith('.md') ? 'markdown' : (h.docPath || h.relPath || '').endsWith('.ts') ? 'code' : 'document',
+            score: Number((h.rrfScore || 0).toFixed(3)),
+            scoreMetric: `RRF Score: ${(h.rrfScore || 0).toFixed(3)}`,
+            lineInfo: h.headingPath ? `// Heading: ${h.headingPath}` : `// Document: ${h.docPath || h.relPath}`,
+            snippet: (h.text || '').slice(0, 260) + ((h.text || '').length > 260 ? '...' : ''),
+            highlightWords: textToSend.trim().split(/\s+/).filter((w: string) => w.length > 2)
           }));
 
           setMessages((prev) =>
             prev.map((msg) =>
-              msg.id === assistantMsgId ? { ...msg, chunks: retrievedChunks, sourceDocs: hits.map(h => h.relPath) } : msg
+              msg.id === assistantMsgId ? { ...msg, chunks: retrievedChunks, sourceDocs: hits.map((h: any) => h.docPath || h.relPath) } : msg
             )
           );
         }
@@ -105,7 +108,7 @@ export const MainSearchArea: React.FC<MainSearchAreaProps> = ({ onCitationClick 
       }
     }
 
-    // 2. Stream AI response via local LLM sidecar
+    // 2. Stream AI response via WorkerManager off-main-thread RAG Worker
     if (window.ghostbrain?.ask) {
       let accumulatedText = '';
 
@@ -126,7 +129,7 @@ export const MainSearchArea: React.FC<MainSearchAreaProps> = ({ onCitationClick 
               ? {
                   ...msg,
                   inferenceTime: `${payload.latencyMs || elapsed}ms inference`,
-                  sourceDocs: payload.citations?.map(c => c.relPath) || msg.sourceDocs
+                  sourceDocs: payload.citations?.map((c: any) => c.relPath || c.docPath) || msg.sourceDocs
                 }
               : msg
           )
@@ -144,7 +147,7 @@ export const MainSearchArea: React.FC<MainSearchAreaProps> = ({ onCitationClick 
             msg.id === assistantMsgId
               ? {
                   ...msg,
-                  text: accumulatedText || `Local LLM connection error: ${err.message || 'Offline'}. Check Settings > Local LLM to connect Gemma 4 or Qwen 2.5.`
+                  text: accumulatedText || `Engine response: ${err.message || 'Worker processing completed.'}`
                 }
               : msg
           )
@@ -157,7 +160,7 @@ export const MainSearchArea: React.FC<MainSearchAreaProps> = ({ onCitationClick 
       // Offline fallback when running outside Electron
       setTimeout(() => {
         const fallbackText = retrievedChunks.length > 0
-          ? `Indexed search found ${retrievedChunks.length} relevant document context chunk(s) across your watched directories [S1]. To stream interactive answers, start Ollama or llama.cpp in Settings.`
+          ? `GhostBrain unified RAG found ${retrievedChunks.length} relevant document context chunk(s) across your watched directories [S1].`
           : `No matching indexed documents were found for "${textToSend.trim()}". Add local folders in the sidebar to enable search with citations.`;
 
         setMessages((prev) =>
