@@ -11,6 +11,7 @@ export function streamOpenRouterFallback(
 export function initWorker(options?: any): Promise<{ activeProfile: HardwareProfile; dbPath: string }>;
 
 export function getVectorStore(): any;
+export function setVectorStore(store: any): void;
 
 export function getWatchedFolders(dbOrStore: any): string[];
 

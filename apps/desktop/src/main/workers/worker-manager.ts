@@ -1,6 +1,7 @@
 import { profileHardware } from './hardware-profiler.js';
-import { executeSearch, processChatStream, indexFolder } from './rag-worker.js';
+import { executeSearch, processChatStream, indexFolder, setVectorStore } from './rag-worker.js';
 import { safeWriteFile, safeReadFile } from './safe-write.js';
+import { VectorStore } from '../db/vector-store.js';
 import type { Database } from 'better-sqlite3-multiple-ciphers';
 import type { SearchHit, SearchQueryPayload, ChatAskPayload, ChatCitation } from '@ghostbrain/shared-types';
 
@@ -28,6 +29,7 @@ export class WorkerManager {
   private static instance: WorkerManager | null = null;
   private profile: HardwareProfile | null = null;
   private db: Database | null = null;
+  private vectorStore: any = null;
 
   private constructor() {}
 
@@ -40,6 +42,12 @@ export class WorkerManager {
 
   public async init(db: Database, options?: any): Promise<HardwareProfile> {
     this.db = db;
+    try {
+      this.vectorStore = new VectorStore(db);
+      setVectorStore(this.vectorStore);
+    } catch (err) {
+      console.warn('[WorkerManager] Failed to wrap db in VectorStore:', err);
+    }
     this.profile = (await profileHardware(options)) as HardwareProfile;
 
     console.log(
@@ -54,13 +62,13 @@ export class WorkerManager {
   }
 
   public async search(payload: SearchQueryPayload): Promise<SearchHit[]> {
-    if (!this.db) return [];
-    const result = executeSearch(this.db, payload, this.profile);
+    if (!this.db && !this.vectorStore) return [];
+    const result = executeSearch(this.vectorStore || this.db, payload, this.profile);
     return result.hits as SearchHit[];
   }
 
   public async indexFolder(folderPath: string, onProgress?: (p: any) => void): Promise<any> {
-    return await indexFolder(folderPath, onProgress);
+    return await indexFolder(folderPath, onProgress, this.vectorStore);
   }
 
   public async readFile(targetPath: string): Promise<any> {
@@ -77,8 +85,8 @@ export class WorkerManager {
     onDone: (done: { streamId: string; citations: ChatCitation[]; latencyMs: number; tier?: string }) => void,
     onThought?: (step: string) => void
   ): Promise<{ streamId: string }> {
-    if (!this.db) throw new Error('Database not initialized');
-    const result = await processChatStream(this.db, payload, onToken, onDone, this.profile, onThought);
+    if (!this.db && !this.vectorStore) throw new Error('Database not initialized');
+    const result = await processChatStream(this.vectorStore || this.db, payload, onToken, onDone, this.profile, onThought);
     return { streamId: result.streamId };
   }
 }

@@ -57,7 +57,7 @@ export class RelayClient extends EventEmitter {
   private reconnectAttempts = 0;
 
   public constructor(
-    relayBaseUrl = process.env.RELAY_URL || 'wss://relay.ghostbrain.local',
+    relayBaseUrl = process.env.RELAY_URL || (process.env.NODE_ENV !== 'production' ? 'ws://localhost:8787' : 'wss://relay.ghostbrain.local'),
     sessionId = process.env.RELAY_SESSION_ID || 'default-vault-session',
     identity?: DeviceIdentity
   ) {

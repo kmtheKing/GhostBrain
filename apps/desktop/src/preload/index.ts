@@ -110,6 +110,16 @@ const api: GhostBrainApi = {
     const handler = (_: IpcRendererEvent, step: string): void => callback(step);
     ipcRenderer.on('rag:thought-step', handler);
     return () => ipcRenderer.removeListener('rag:thought-step', handler);
+  },
+  onDevicesUpdated: (callback: (devices: any[]) => void) => {
+    const handler = (_: IpcRendererEvent, devices: any[]): void => callback(devices);
+    ipcRenderer.on('devices:updated', handler);
+    return () => ipcRenderer.removeListener('devices:updated', handler);
+  },
+  onRemoteMessage: (callback: (msg: any) => void) => {
+    const handler = (_: IpcRendererEvent, msg: any): void => callback(msg);
+    ipcRenderer.on('chat:remote-message', handler);
+    return () => ipcRenderer.removeListener('chat:remote-message', handler);
   }
 };
 

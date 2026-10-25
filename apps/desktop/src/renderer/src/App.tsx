@@ -140,6 +140,34 @@ export function App() {
       });
     }
 
+    // Listen to RAG index progress updates to refresh chunk count on completion
+    let unsubRagProg: (() => void) | undefined;
+    if (window.ghostbrain?.onRagIndexProgress) {
+      unsubRagProg = window.ghostbrain.onRagIndexProgress((prog: any) => {
+        if (prog && prog.total > 0 && (prog.indexed + prog.skipped) >= prog.total) {
+          reloadFolders();
+        }
+      });
+    }
+
+    // Listen to real-time paired client connection events
+    let unsubDevices: (() => void) | undefined;
+    if (window.ghostbrain?.onDevicesUpdated) {
+      unsubDevices = window.ghostbrain.onDevicesUpdated((devices) => {
+        if (devices) {
+          const mapped: PairedClient[] = devices.map((d: any) => ({
+            id: d.id,
+            name: d.name,
+            ip: d.ip || '192.168.1.42',
+            status: (d.status === 'revoked' ? 'idle' : d.status) as any,
+            type: d.kind
+          }));
+          setPairedClients(mapped);
+          showToast('Paired client connected');
+        }
+      });
+    }
+
     // Listen to window maximize / restore changes
     let unsubMax: (() => void) | undefined;
     if (window.ghostbrain?.onMaximizeChange) {
@@ -151,6 +179,8 @@ export function App() {
     return () => {
       clearInterval(interval);
       unsubIndex?.();
+      unsubRagProg?.();
+      unsubDevices?.();
       unsubMax?.();
     };
   }, [reloadFolders, reloadPairedClients, refreshTelemetry]);
@@ -244,18 +274,7 @@ export function App() {
           directories={directories}
           telemetry={telemetry}
           pairedClients={pairedClients}
-          onAddDirectoryClick={() => {
-            if (window.ghostbrain?.addFolder) {
-              window.ghostbrain.addFolder().then((added) => {
-                if (added) {
-                  reloadFolders();
-                  showToast(`Indexed directory: ${added.absPath}`);
-                }
-              }).catch(() => setIsAddDirOpen(true));
-            } else {
-              setIsAddDirOpen(true);
-            }
-          }}
+          onAddDirectoryClick={() => setIsAddDirOpen(true)}
           onDirectoryClick={(dir) => showToast(`Active scope: ${dir.path}`)}
         />
 

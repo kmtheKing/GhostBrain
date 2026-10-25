@@ -181,7 +181,7 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
           w.label,
           w.is_enabled,
           w.created_at,
-          COALESCE((SELECT COUNT(1) FROM vector_embeddings ve WHERE ve.doc_path LIKE w.abs_path || '%'), 0) +
+          COALESCE((SELECT COUNT(1) FROM vector_embeddings ve WHERE replace(ve.doc_path, '\', '/') LIKE replace(w.abs_path, '\', '/') || '%'), 0) +
           COALESCE((SELECT COUNT(1) FROM chunks c JOIN documents d ON c.document_id = d.id WHERE d.folder_id = w.id), 0) as chunk_count
         FROM watched_folders w
         ORDER BY w.id ASC
@@ -340,6 +340,16 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
           mainWindow.webContents.send('rag:index-progress', { ...prog, folderPath });
         }
       });
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('rag:index-progress', {
+          current: folderPath,
+          total: result?.totalFiles || 1,
+          indexed: result?.filesIndexed || 1,
+          skipped: result?.filesSkipped || 0,
+          folderPath,
+          done: true
+        });
+      }
       broadcastIndexStatus();
       return result;
     } catch (err: any) {

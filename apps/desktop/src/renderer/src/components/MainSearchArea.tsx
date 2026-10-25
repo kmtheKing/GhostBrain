@@ -135,6 +135,36 @@ export const MainSearchArea: React.FC<MainSearchAreaProps> = ({ onCitationClick 
     }
   }, []);
 
+  // Listen to incoming remote messages from web remote
+  useEffect(() => {
+    if (window.ghostbrain?.onRemoteMessage) {
+      const unsub = window.ghostbrain.onRemoteMessage((remoteMsg: any) => {
+        if (!remoteMsg || !remoteMsg.id) return;
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === remoteMsg.id)) return prev;
+          return [
+            ...prev,
+            {
+              id: remoteMsg.id,
+              sender: remoteMsg.role === 'user' ? 'user' : 'assistant',
+              text: remoteMsg.content,
+              thoughts: remoteMsg.thoughts,
+              sourceDocs: remoteMsg.citations?.map((c: any) => c.relPath || c.docPath),
+              chunks: remoteMsg.citations?.map((c: any) => ({
+                filename: (c.relPath || c.docPath || 'document').split(/[/\\]/).pop(),
+                type: 'document',
+                score: Number((c.score || 0).toFixed(3)),
+                scoreMetric: `Score: ${(c.score || 0).toFixed(3)}`,
+                snippet: c.text || ''
+              }))
+            }
+          ];
+        });
+      });
+      return () => unsub?.();
+    }
+  }, []);
+
   const handleCopy = (id: string, text: string) => {
     navigator.clipboard?.writeText(text);
     setCopiedId(id);

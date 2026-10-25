@@ -14,11 +14,18 @@ import { computeBlake3Hex } from '@ghostbrain/core';
  */
 
 export class VectorStore {
-  constructor(dbPath) {
-    this.dbPath = dbPath;
-    this.db = new Database(dbPath);
-    this.db.pragma('journal_mode = WAL');
-    this.db.pragma('synchronous = NORMAL');
+  constructor(dbOrPath) {
+    if (typeof dbOrPath === 'string') {
+      this.dbPath = dbOrPath;
+      this.db = new Database(dbOrPath);
+    } else {
+      this.db = dbOrPath;
+      this.dbPath = dbOrPath?.name || 'database';
+    }
+    try {
+      this.db.pragma('journal_mode = WAL');
+      this.db.pragma('synchronous = NORMAL');
+    } catch {}
     this.initSchema();
   }
 
@@ -26,13 +33,13 @@ export class VectorStore {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS documents (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        path TEXT UNIQUE NOT NULL,
-        mtime INTEGER NOT NULL,
-        hash TEXT NOT NULL,
+        path TEXT UNIQUE,
+        mtime INTEGER,
+        hash TEXT,
         title TEXT,
         type TEXT,
-        raw_markdown TEXT NOT NULL,
-        indexed_at INTEGER NOT NULL
+        raw_markdown TEXT,
+        indexed_at INTEGER
       );
 
       CREATE TABLE IF NOT EXISTS vector_embeddings (
@@ -54,8 +61,18 @@ export class VectorStore {
       );
 
       CREATE INDEX IF NOT EXISTS idx_vec_doc_path ON vector_embeddings(doc_path);
-      CREATE INDEX IF NOT EXISTS idx_doc_mtime ON documents(mtime);
     `);
+
+    try {
+      const cols = this.db.pragma('table_info(documents)').map((c) => c.name);
+      if (!cols.includes('path')) this.db.exec('ALTER TABLE documents ADD COLUMN path TEXT;');
+      if (!cols.includes('mtime')) this.db.exec('ALTER TABLE documents ADD COLUMN mtime INTEGER;');
+      if (!cols.includes('hash')) this.db.exec('ALTER TABLE documents ADD COLUMN hash TEXT;');
+      if (!cols.includes('title')) this.db.exec('ALTER TABLE documents ADD COLUMN title TEXT;');
+      if (!cols.includes('type')) this.db.exec('ALTER TABLE documents ADD COLUMN type TEXT;');
+      if (!cols.includes('raw_markdown')) this.db.exec('ALTER TABLE documents ADD COLUMN raw_markdown TEXT;');
+      if (!cols.includes('indexed_at')) this.db.exec('ALTER TABLE documents ADD COLUMN indexed_at INTEGER;');
+    } catch {}
   }
 
   /**

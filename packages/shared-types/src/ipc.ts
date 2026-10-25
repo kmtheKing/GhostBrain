@@ -173,6 +173,8 @@ export interface GhostBrainApi {
   saveChatMessage?: (msg: PersistedChatMessage) => Promise<boolean>;
   clearChatHistory?: (conversationId?: string) => Promise<boolean>;
   onThoughtStep?: (callback: (step: string) => void) => () => void;
+  onDevicesUpdated?: (callback: (devices: PairedDeviceRecord[]) => void) => () => void;
+  onRemoteMessage?: (callback: (msg: any) => void) => () => void;
 
   // Window
   minimizeWindow: () => void;

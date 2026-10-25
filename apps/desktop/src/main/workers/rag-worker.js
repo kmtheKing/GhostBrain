@@ -128,6 +128,10 @@ export async function initWorker(options = {}) {
   return { activeProfile, dbPath };
 }
 
+export function setVectorStore(store) {
+  vectorStore = store;
+}
+
 export function getVectorStore() {
   if (!vectorStore) {
     const dbPath = path.join(process.cwd(), 'brain.sqlite');
@@ -284,10 +288,10 @@ export function executeSearch(dbOrStore, payload, profile = activeProfile) {
       return {
         hits: rows.map((r, i) => ({
           chunkId: r.chunk_id || i + 1,
-          docPath: r.doc_path || 'unknown',
+          docPath: r.rel_path || r.doc_path || 'unknown',
           headingPath: r.heading_path,
           text: r.text,
-          rrfScore: 1.0,
+          rrfScore: r.score || 1.0,
           tag: `[S${i + 1}]`
         })),
         latencyMs: 1
@@ -296,7 +300,14 @@ export function executeSearch(dbOrStore, payload, profile = activeProfile) {
       return { hits: [], latencyMs: 0 };
     }
   }
-  return getVectorStore().search(payload.query || '', limit);
+  if (dbOrStore === null) {
+    return { hits: [], latencyMs: 0 };
+  }
+  const store = getVectorStore();
+  if (store && typeof store.search === 'function') {
+    return store.search(payload.query || '', limit);
+  }
+  return { hits: [], latencyMs: 0 };
 }
 
 /**
@@ -455,7 +466,7 @@ export async function processChatStream(dbOrStore, payload, onToken, onDone, pro
     searchLatency = res.latencyMs || 0;
   } else if (dbOrStore && typeof dbOrStore.prepare === 'function') {
     try {
-      const rows = dbOrStore.prepare('').all(topK);
+      const rows = dbOrStore.prepare('SELECT chunk_id, doc_path, heading_path, text FROM vector_embeddings LIMIT ?').all(topK);
       hits = rows.map((r, i) => ({
         chunkId: r.chunk_id || i + 1,
         docPath: r.rel_path || r.doc_path || 'unknown',
@@ -468,7 +479,7 @@ export async function processChatStream(dbOrStore, payload, onToken, onDone, pro
     } catch {
       hits = [];
     }
-  } else if (dbOrStore) {
+  } else if (dbOrStore === undefined) {
     const res = getVectorStore().search(rawQuery, topK);
     hits = res.hits || [];
     searchLatency = res.latencyMs || 0;
