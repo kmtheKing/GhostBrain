@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import Database from 'better-sqlite3';
+import Database from 'better-sqlite3-multiple-ciphers';
 import { SCHEMA_V1, SCHEMA_V2 } from './schema.js';
 
 describe('Sub-Agent 1: Directory Ingestion & Continuous SQLite Timeline Suite', () => {

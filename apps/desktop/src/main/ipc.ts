@@ -251,6 +251,11 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
           if (!mainWindow.isDestroyed()) {
             mainWindow.webContents.send('chat:done', donePayload);
           }
+        },
+        (thoughtStep) => {
+          if (!mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('rag:thought-step', thoughtStep);
+          }
         }
       );
     } catch (err: any) {
