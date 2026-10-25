@@ -156,9 +156,20 @@ export interface GhostBrainApi {
   getSystemTelemetry: () => Promise<SystemTelemetry>;
   selectModelFile: () => Promise<string | null>;
 
+  // Master RAG Foundation Channels
+  selectRagFolder?: () => Promise<string | null>;
+  indexRagFolder?: (folderPath: string) => Promise<any>;
+  ragSearch?: (query: string, limit?: number) => Promise<any>;
+  searchRag?: (payload: { query: string; limit?: number }) => Promise<any>;
+  readRagFile?: (filePath: string) => Promise<{ path: string; content: string; isBinary?: boolean; isCompanion?: boolean; previewMarkdown?: string }>;
+  writeRagFile?: (filePath: string, content: string) => Promise<{ path: string; backupPath?: string; isCompanion: boolean }>;
+  onRagIndexProgress?: (callback: (progress: any) => void) => () => void;
+
+
   // Window
   minimizeWindow: () => void;
   maximizeWindow: () => void;
   closeWindow: () => void;
   onMaximizeChange?: (callback: (isMaximized: boolean) => void) => () => void;
 }
+

@@ -82,6 +82,18 @@ const api: GhostBrainApi = {
     const handler = (_: IpcRendererEvent, isMax: boolean): void => callback(isMax);
     ipcRenderer.on('window:maximize-change', handler);
     return () => ipcRenderer.removeListener('window:maximize-change', handler);
+  },
+
+  // Master RAG Operations (Universal Ingestion & Safe Write)
+  selectRagFolder: () => ipcRenderer.invoke('rag:select-folder'),
+  indexRagFolder: (folderPath: string) => ipcRenderer.invoke('rag:index-folder', folderPath),
+  ragSearch: (query: string, limit?: number) => ipcRenderer.invoke('rag:search', { query, limit }),
+  readRagFile: (targetPath: string) => ipcRenderer.invoke('rag:read-file', targetPath),
+  writeRagFile: (targetPath: string, content: string) => ipcRenderer.invoke('rag:write-file', targetPath, content),
+  onRagIndexProgress: (callback: (progress: any) => void) => {
+    const handler = (_: IpcRendererEvent, p: any): void => callback(p);
+    ipcRenderer.on('rag:index-progress', handler);
+    return () => ipcRenderer.removeListener('rag:index-progress', handler);
   }
 };
 

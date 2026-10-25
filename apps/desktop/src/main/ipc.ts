@@ -1,9 +1,8 @@
 import os from 'os';
 import { ipcMain, dialog, BrowserWindow } from 'electron';
 import { getDatabase } from './db/index.js';
-import { hybridSearch } from './db/search.js';
 import { getPowerMode, setPowerMode, isIndexingCurrentlyPaused } from './tray.js';
-import { buildRagPrompt, parseCitations, OllamaProvider, generatePairingCode, generateDeviceIdentity, computeDeviceFingerprint, type ChatMessage } from '@ghostbrain/core';
+import { buildRagPrompt, parseCitations, generatePairingCode, generateDeviceIdentity, computeDeviceFingerprint, type ChatMessage } from '@ghostbrain/core';
 import type {
   WatchedFolder,
   IndexStatus,
@@ -19,6 +18,7 @@ import type {
 } from '@ghostbrain/shared-types';
 
 import { FolderWatcherManager } from './indexer/watcher.js';
+import { WorkerManager } from './workers/worker-manager.js';
 
 export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: FolderWatcherManager): void {
   const db = getDatabase();
@@ -148,10 +148,10 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
     return true;
   });
 
-  // Search and Chat
-  ipcMain.handle('search:query', (_event, payload: SearchQueryPayload): SearchHit[] => {
+  // Search and Chat (Delegated to Off-Main-Thread Worker)
+  ipcMain.handle('search:query', async (_event, payload: SearchQueryPayload): Promise<SearchHit[]> => {
     try {
-      return hybridSearch(db, payload);
+      return await WorkerManager.getInstance().search(payload);
     } catch (err) {
       console.warn('[IPC] Search query warning:', err);
       return [];
@@ -159,69 +159,79 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
   });
 
   ipcMain.handle('chat:ask', async (_event, payload: ChatAskPayload): Promise<ChatAskResponse> => {
-    const streamId = 'stream_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-    const startTime = Date.now();
-
-    const hits = hybridSearch(db, { query: payload.query, limit: 6 });
-    const ragPrompt = buildRagPrompt(payload.query, hits);
-
-    (async () => {
-      let fullResponse = '';
-      try {
-        const ollama = new OllamaProvider();
-        const isOllamaOnline = await ollama.checkHealth();
-
-        if (isOllamaOnline) {
-          const messages: ChatMessage[] = [
-            { role: 'system', content: ragPrompt.systemPrompt },
-            { role: 'user', content: ragPrompt.userPrompt }
-          ];
-
-          for await (const token of ollama.streamChat(messages)) {
-            if (mainWindow.isDestroyed()) return;
-            fullResponse += token;
-            mainWindow.webContents.send('chat:token', { streamId, delta: token });
+    try {
+      return await WorkerManager.getInstance().streamChat(
+        payload,
+        (tokenPayload) => {
+          if (!mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('chat:token', tokenPayload);
           }
-        } else {
-          const fallbackText = hits.length > 0
-            ? 'Found ' + hits.length + ' relevant context chunk(s) in your local documents [S1], but your local LLM (Ollama) is offline at http://127.0.0.1:11434. Please start Ollama or llama-server to stream real-time local intelligence.'
-            : 'No relevant local documents were found for your query, and your local LLM is currently offline.';
-
-          for (const word of fallbackText.split(' ')) {
-            if (mainWindow.isDestroyed()) return;
-            fullResponse += word + ' ';
-            mainWindow.webContents.send('chat:token', { streamId, delta: word + ' ' });
-            await new Promise(r => setTimeout(r, 20));
+        },
+        (donePayload) => {
+          if (!mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('chat:done', donePayload);
           }
         }
-
-        const citations = parseCitations(fullResponse, hits);
-        const latencyMs = Date.now() - startTime;
-
-        if (!mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('chat:done', {
-            streamId,
-            citations,
-            latencyMs
-          });
-        }
-      } catch (err: any) {
-        console.error('[IPC] chat:ask streaming error:', err);
-        if (!mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('chat:token', {
-            streamId,
-            delta: '\n\n[Error: ' + (err.message || 'Streaming failed') + ']'
-          });
-          mainWindow.webContents.send('chat:done', {
-            streamId,
-            citations: parseCitations(fullResponse, hits),
-            latencyMs: Date.now() - startTime
-          });
-        }
+      );
+    } catch (err: any) {
+      console.error('[IPC] chat:ask error:', err);
+      const streamId = 'stream_err_' + Date.now();
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('chat:token', { streamId, delta: '\n[Processing Notice: ' + (err.message || 'Worker unavailable') + ']' });
+        mainWindow.webContents.send('chat:done', { streamId, citations: [], latencyMs: 0 });
       }
-    })();
+      return { streamId };
+    }
+  });
 
-    return { streamId };
+  // Master RAG Operations (Background Worker Delegated)
+  ipcMain.handle('rag:select-folder', async (): Promise<string | null> => {
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: 'Select Folder for GhostBrain RAG Indexing',
+      properties: ['openDirectory']
+    });
+    if (res.canceled || res.filePaths.length === 0) return null;
+    return res.filePaths[0];
+  });
+
+  ipcMain.handle('rag:index-folder', async (_event, folderPath: string): Promise<any> => {
+    try {
+      return await WorkerManager.getInstance().indexFolder(folderPath, (prog) => {
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('rag:index-progress', prog);
+        }
+      });
+    } catch (err: any) {
+      console.error('[IPC] rag:index-folder failed:', err);
+      return { error: err.message };
+    }
+  });
+
+  ipcMain.handle('rag:search', async (_event, payload: { query: string; limit?: number }): Promise<any> => {
+    try {
+      return await WorkerManager.getInstance().search(payload as SearchQueryPayload);
+    } catch (err: any) {
+      console.warn('[IPC] rag:search error:', err);
+      return { hits: [], latencyMs: 0 };
+    }
+  });
+
+  ipcMain.handle('rag:read-file', async (_event, targetPath: string): Promise<any> => {
+    try {
+      return await WorkerManager.getInstance().readFile(targetPath);
+    } catch (err: any) {
+      console.error('[IPC] rag:read-file error:', err);
+      throw err;
+    }
+  });
+
+  ipcMain.handle('rag:write-file', async (_event, targetPath: string, content: string): Promise<any> => {
+    try {
+      return await WorkerManager.getInstance().writeFile(targetPath, content);
+    } catch (err: any) {
+      console.error('[IPC] rag:write-file error:', err);
+      throw err;
+    }
   });
 
   // Power Mode
@@ -269,20 +279,15 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
     return Math.max(1, Math.min(100, usage));
   }
 
-  async function checkLocalModelOnline(): Promise<{ isOnline: boolean; models: string[] }> {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 600);
-      const res = await fetch('http://127.0.0.1:11434/api/tags', { signal: controller.signal });
-      clearTimeout(timeoutId);
-      if (res.ok) {
-        const data: any = await res.json();
-        const models = (data.models || []).map((m: any) => m.name || m.model);
-        return { isOnline: true, models };
-      }
-    } catch {}
-    return { isOnline: false, models: [] };
+  function getActiveHardwareStatus(): { isOnline: boolean; tier: string; model: string | null } {
+    const profile = WorkerManager.getInstance().getProfile();
+    return {
+      isOnline: Boolean(profile?.modelConfig?.llmEnabled),
+      tier: profile?.tier || 'SEARCH_ONLY',
+      model: profile?.modelConfig?.model || null
+    };
   }
+
 
 
   // Memoized desktop device identity
@@ -388,7 +393,7 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
     const processRssMB = Math.round(memUsage.rss / (1024 * 1024));
     const processHeapMB = Math.round(memUsage.heapUsed / (1024 * 1024));
 
-    const modelCheck = await checkLocalModelOnline();
+    const hw = getActiveHardwareStatus();
 
     return {
       cpuLoad,
@@ -403,8 +408,8 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
       arch: os.arch(),
       hostname: os.hostname(),
       uptimeSec: Math.round(os.uptime()),
-      isModelOnline: modelCheck.isOnline,
-      installedModels: modelCheck.models
+      isModelOnline: hw.isOnline,
+      installedModels: hw.model ? [hw.model] : [`${hw.tier} Tier (Zero-LLM Fast Search)`]
     };
   });
 
@@ -435,60 +440,11 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
   });
 
 
-  // 1-Click Tier Engine Setup
-  ipcMain.handle('llm:setupTier', async (_event, tier: 'low' | 'balanced' | 'high'): Promise<{ success: boolean; model: string }> => {
-    const tierMap = {
-      low: 'gemma2:2b',
-      balanced: 'llama3.2:3b',
-      high: 'qwen2.5:7b'
-    };
-    const modelTag = tierMap[tier] || 'gemma2:2b';
-
-    try {
-      // Broadcast initial download progress
-      mainWindow.webContents.send('llm:pull-progress', {
-        model: modelTag,
-        status: 'Connecting to engine...',
-        percent: 15,
-        done: false
-      });
-
-      // Check if Ollama is online
-      const check = await checkLocalModelOnline();
-      if (check.isOnline) {
-        mainWindow.webContents.send('llm:pull-progress', {
-          model: modelTag,
-          status: 'Pulling model weights...',
-          percent: 60,
-          done: false
-        });
-      }
-
-      mainWindow.webContents.send('llm:pull-progress', {
-        model: modelTag,
-        status: 'Configuring GhostBrain sidecar...',
-        percent: 90,
-        done: false
-      });
-
-      // Set active model in settings
-      db.prepare("INSERT OR REPLACE INTO settings (key, value_json, updated_at) VALUES ('active_tier_model', ?, ?)").run(
-        JSON.stringify({ tier, modelTag }),
-        Date.now()
-      );
-
-      mainWindow.webContents.send('llm:pull-progress', {
-        model: modelTag,
-        status: 'Ready to use!',
-        percent: 100,
-        done: true
-      });
-
-      return { success: true, model: modelTag };
-    } catch (err: any) {
-      console.error('[IPC] Failed to setup model tier:', err);
-      return { success: false, model: modelTag };
-    }
+  // 1-Click Tier Engine Setup (Reflects Silent 3-Tier Auto-Switcher)
+  ipcMain.handle('llm:setupTier', async (_event, _tier: 'low' | 'balanced' | 'high'): Promise<{ success: boolean; model: string }> => {
+    const profile = WorkerManager.getInstance().getProfile();
+    const modelTag = profile?.modelConfig?.model || `${profile?.tier || 'SEARCH_ONLY'} Tier (Zero-LLM Fast Search)`;
+    return { success: true, model: modelTag };
   });
 
   // Window Controls

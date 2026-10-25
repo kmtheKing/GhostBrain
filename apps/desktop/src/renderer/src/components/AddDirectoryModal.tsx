@@ -9,19 +9,36 @@ interface AddDirectoryModalProps {
 }
 
 export const AddDirectoryModal: React.FC<AddDirectoryModalProps> = ({ isOpen, onClose, onAdd }) => {
-  const [path, setPath] = useState('~/Code/GhostBrain-Sidecar');
-  const [engine, setEngine] = useState('FTS5 + Vec');
+  const [path, setPath] = useState('');
+  const [engine, setEngine] = useState('256-dim BLOB + FTS5 RRF');
 
   if (!isOpen) return null;
+
+  const handleBrowse = async () => {
+    if (window.ghostbrain?.selectRagFolder) {
+      try {
+        const selected = await window.ghostbrain.selectRagFolder();
+        if (selected) {
+          setPath(selected);
+        }
+      } catch (err) {
+        console.error('Failed to select folder:', err);
+      }
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!path.trim()) return;
 
+    if (window.ghostbrain?.indexRagFolder) {
+      window.ghostbrain.indexRagFolder(path.trim()).catch(console.error);
+    }
+
     onAdd({
       path: path.trim(),
-      status: 'Sync',
-      chunks: Math.floor(Math.random() * 800) + 120,
+      status: 'Live',
+      chunks: 0,
       engine,
     });
     onClose();
@@ -38,7 +55,7 @@ export const AddDirectoryModal: React.FC<AddDirectoryModalProps> = ({ isOpen, on
         <div className="px-5 py-3.5 bg-slate-50 dark:bg-zinc-900/90 border-b border-slate-200 dark:border-zinc-800 flex items-center justify-between">
           <div className="flex items-center space-x-2 font-bold text-sm">
             <Folder className="w-4 h-4 text-amber-500" />
-            <span id="add-dir-title">Watch Local Directory</span>
+            <span id="add-dir-title">Index Local Directory</span>
           </div>
           <button
             type="button"
@@ -54,14 +71,23 @@ export const AddDirectoryModal: React.FC<AddDirectoryModalProps> = ({ isOpen, on
             <label className="block text-[11px] font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wide mb-1">
               Absolute Local Path
             </label>
-            <input
-              type="text"
-              value={path}
-              onChange={(e) => setPath(e.target.value)}
-              placeholder="e.g. ~/Research/KnowledgeBase"
-              className="w-full bg-slate-50 dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-xs text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-              autoFocus
-            />
+            <div className="flex space-x-2">
+              <input
+                type="text"
+                value={path}
+                onChange={(e) => setPath(e.target.value)}
+                placeholder="e.g. C:\Users\kamal\Documents\Vault"
+                className="flex-1 bg-slate-50 dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-xs text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={handleBrowse}
+                className="px-3 py-2 bg-slate-200 dark:bg-zinc-800 hover:bg-slate-300 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 rounded-lg font-mono text-xs cursor-pointer border border-slate-300 dark:border-zinc-700 shrink-0 font-bold"
+              >
+                Browse...
+              </button>
+            </div>
           </div>
 
           <div>
