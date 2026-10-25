@@ -7,7 +7,11 @@ export type RelayFrameType =
   | 'PING'
   | 'PONG'
   | 'PEER_STATUS'
-  | 'ERROR';
+  | 'ERROR'
+  | 'SYNC_INIT'
+  | 'SYNC_TIMELINE'
+  | 'MESSAGE_SYNC'
+  | 'CLEAR_TIMELINE';
 
 export interface EncryptedEnvelope {
   counter: number;
@@ -21,6 +25,28 @@ export interface RelayHelloPayload {
   sig: string; // 64-byte Ed25519 signature hex
   identityPub: string; // 32-byte Ed25519 identity pubkey hex
   fingerprint: string;
+  pairingCode?: string;
+  clientName?: string;
+}
+
+export interface RelaySyncInitPayload {
+  timeline: any[];
+  telemetry: {
+    cpuLoad: number;
+    cpuCores: number;
+    cpuModel: string;
+    totalRamMB: number;
+    usedRamMB: number;
+    activeModel: string;
+    tier: string;
+    isModelOnline: boolean;
+  };
+  timestamp: number;
+}
+
+export interface RelayMessageSyncPayload {
+  message: any;
+  timestamp: number;
 }
 
 export interface RelayWireMessage {

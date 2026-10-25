@@ -27,6 +27,54 @@ import { RelayClient } from './relay-client.js';
 export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: FolderWatcherManager): void {
   const db = getDatabase();
 
+  const relay = RelayClient.getInstance();
+  relay.setDatabase(db);
+
+  function broadcastDevices(): void {
+    try {
+      if (mainWindow.isDestroyed()) return;
+      const rows = db.prepare(`
+        SELECT id, name, kind, fingerprint, connection as connectionType, ip, permissions, status, last_ping_at as lastPingAt, created_at as createdAt
+        FROM paired_devices
+        WHERE status != 'revoked'
+        ORDER BY created_at DESC
+      `).all() as any[];
+
+      const devices = rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        kind: r.kind || 'mobile',
+        fingerprint: r.fingerprint,
+        connectionType: r.connectionType || 'Zero-Knowledge Relay',
+        ip: r.ip || '192.168.1.42',
+        permissions: r.permissions || 'Full Query + Clip',
+        status: r.status || 'active',
+        lastPingAt: r.lastPingAt,
+        createdAt: r.createdAt
+      }));
+
+      mainWindow.webContents.send('devices:updated', devices);
+    } catch {
+      // Ignore during teardown
+    }
+  }
+
+  relay.on('devices_updated', () => {
+    broadcastDevices();
+  });
+
+  relay.on('device_paired', () => {
+    broadcastDevices();
+  });
+
+  relay.on('message_received', (msg) => {
+    try {
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('chat:remote-message', msg);
+      }
+    } catch {}
+  });
+
   function broadcastIndexStatus(): void {
     try {
       if (mainWindow.isDestroyed()) return;
@@ -48,6 +96,70 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
 
   watcherManager.onEvent(() => {
     broadcastIndexStatus();
+  });
+
+  // Continuous Chat Timeline Persistence Handlers
+  ipcMain.handle('chat:get-history', (_event, conversationId?: string) => {
+    try {
+      const convId = conversationId || 'default';
+      const rows = db.prepare(`
+        SELECT id, role, content, thoughts, tool_calls, citations, created_at as timestamp
+        FROM chat_messages
+        WHERE conversation_id = ? AND is_archived = 0
+        ORDER BY created_at ASC
+      `).all(convId) as any[];
+
+      return rows.map((r) => ({
+        id: r.id,
+        role: r.role,
+        content: r.content,
+        thoughts: JSON.parse(r.thoughts || '[]'),
+        toolCalls: JSON.parse(r.tool_calls || '[]'),
+        citations: JSON.parse(r.citations || '[]'),
+        timestamp: r.timestamp
+      }));
+    } catch (err) {
+      console.error('[IPC] Failed to fetch chat history:', err);
+      return [];
+    }
+  });
+
+  ipcMain.handle('chat:save-message', (_event, msg: any) => {
+    try {
+      const convId = msg.conversationId || 'default';
+      db.prepare(`
+        INSERT OR REPLACE INTO chat_messages (id, conversation_id, role, content, thoughts, tool_calls, citations, is_archived, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+      `).run(
+        msg.id,
+        convId,
+        msg.role,
+        msg.content,
+        JSON.stringify(msg.thoughts || []),
+        JSON.stringify(msg.toolCalls || []),
+        JSON.stringify(msg.citations || []),
+        msg.timestamp || Date.now()
+      );
+      // Synchronize outbound to paired remote web clients
+      relay.broadcastMessageToPeers(msg);
+      return true;
+    } catch (err) {
+      console.error('[IPC] Failed to save chat message:', err);
+      return false;
+    }
+  });
+
+  ipcMain.handle('chat:clear-history', (_event, conversationId?: string) => {
+    try {
+      const convId = conversationId || 'default';
+      db.prepare('UPDATE chat_messages SET is_archived = 1 WHERE conversation_id = ? AND is_archived = 0').run(convId);
+      // Synchronize clear outbound to paired remote web clients
+      relay.broadcastClearToPeers();
+      return true;
+    } catch (err) {
+      console.error('[IPC] Failed to clear chat history:', err);
+      return false;
+    }
   });
 
   // Folders
@@ -484,6 +596,7 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, watcherManager: F
   ipcMain.handle('devices:revoke', (_event, deviceId: string): boolean => {
     try {
       db.prepare("UPDATE paired_devices SET status = 'revoked' WHERE id = ?").run(deviceId);
+      broadcastDevices();
       return true;
     } catch (err) {
       console.error('[IPC] Failed to revoke device:', err);
